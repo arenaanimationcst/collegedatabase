@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function myProfile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() { return isSignedIn() && myProfile().role == 'admin'; }
+    function myLocation() { return myProfile().location; }
+    function sameLocation(loc) { return isSignedIn() && loc == myLocation(); }
+
+    // ---- Users ----
+    // Admin can read/create/update/delete any user profile.
+    // A signed-in user can read only their own profile (to know their own role/location).
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---- Locations (CST / Thane / Vashi / ...) ----
+    // Everyone signed in can read the list (needed for dropdowns).
+    // Only admin can add/edit/remove locations.
+    match /locations/{locId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- Colleges ----
+    match /colleges/{collegeId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.location == myLocation());
+      allow update, delete: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+    }
+
+    // ---- Visits ----
+    match /visits/{visitId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.location == myLocation());
+      allow update, delete: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+    }
+
+    // ---- Staff (per location) ----
+    match /staff/{staffId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.location == myLocation());
+      allow update, delete: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+    }
+
+    // ---- Checklist items (lightweight to-dos per college) ----
+    match /checklistItems/{itemId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.location == myLocation());
+      allow update, delete: if isSignedIn() && (isAdmin() || resource.data.location == myLocation());
+    }
+  }
+}
