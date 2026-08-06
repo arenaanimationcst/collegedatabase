@@ -288,6 +288,18 @@ input[type=file]{display:none;}
 .reminder-row #vReminderOptions{display:none;}
 .reminder-row.enabled #vReminderOptions{display:block;}
 
+/* Toolbar add button (works on both mobile and desktop, unlike the FAB which hides on desktop) */
+.toolbar-top-row{display:flex; gap:8px; align-items:center; margin-bottom:8px;}
+.toolbar-top-row input[type=text]{flex:1; margin-bottom:0;}
+.toolbar-add-btn{flex-shrink:0; white-space:nowrap;}
+@media(min-width:900px){
+  .toolbar{flex-direction:column; align-items:stretch;}
+  .toolbar-top-row{margin-bottom:10px;}
+  .toolbar-row{display:flex;}
+}
+
+.add-staff-row select{flex-shrink:0; padding:9px 8px; border-radius:8px; border:1px solid var(--gray-200); background:var(--gray-100); font-size:12.5px;}
+
 </style>
 </head>
 <body>
@@ -348,7 +360,10 @@ input[type=file]{display:none;}
   <!-- ===================== COLLEGES VIEW ===================== -->
   <div class="view active" id="view-colleges">
     <div class="toolbar">
-      <input type="text" id="cSearch" placeholder="Search college, address, contact...">
+      <div class="toolbar-top-row">
+        <input type="text" id="cSearch" placeholder="Search college, address, contact...">
+        <button class="btn-primary btn-sm toolbar-add-btn" id="btnAddCollegeTab">+ Add College</button>
+      </div>
       <div class="toolbar-row">
         <select id="cFilterTier"><option value="">All Tiers</option><option>Tier 1</option><option>Tier 2</option><option>Tier 3</option><option value="__blank">Unassigned</option></select>
         <select id="cFilterType"><option value="">All Types</option><option>Junior College</option><option>Degree College</option><option>Junior &amp; Degree College</option></select>
@@ -366,7 +381,10 @@ input[type=file]{display:none;}
   <!-- ===================== VISITS VIEW ===================== -->
   <div class="view" id="view-visits">
     <div class="toolbar">
-      <input type="text" id="vSearch" placeholder="Search college, staff, notes...">
+      <div class="toolbar-top-row">
+        <input type="text" id="vSearch" placeholder="Search college, staff, notes...">
+        <button class="btn-primary btn-sm toolbar-add-btn" id="btnAddVisitTab">+ Log Visit</button>
+      </div>
       <div class="toolbar-row">
         <select id="vFilterTier"><option value="">All Tiers</option><option>Tier 1</option><option>Tier 2</option><option>Tier 3</option></select>
         <select id="vFilterStatus"><option value="">All Status</option><option>Scheduled</option><option>Done</option><option>Postponed</option><option>Cancelled</option></select>
@@ -538,7 +556,7 @@ input[type=file]{display:none;}
       <div class="detail-section">
         <h3>Staff Members <span class="loc-tag" id="staffLocTag"></span></h3>
         <div class="staff-manage-list" id="staffManageList"></div>
-        <div class="add-staff-row"><input type="text" id="newStaffName" placeholder="Add a name, e.g. Rohan Sir"><button class="btn-primary btn-sm" id="btnAddStaff">Add</button></div>
+        <div class="add-staff-row"><select id="staffAddLocation" style="display:none;"></select><input type="text" id="newStaffName" placeholder="Add a name, e.g. Rohan Sir"><button class="btn-primary btn-sm" id="btnAddStaff">Add</button></div>
       </div>
       <div class="detail-section">
         <h3>Reminders</h3>
@@ -606,7 +624,11 @@ input[type=file]{display:none;}
   <div class="modal modal-sm">
     <div class="modal-header"><h2>Export Weekly Report</h2><button class="close" id="btnCloseExcelModal">✕</button></div>
     <div class="modal-body">
-      <div class="form-grid"><div class="field"><label>From</label><input type="date" id="excelFrom"></div><div class="field"><label>To</label><input type="date" id="excelTo"></div></div>
+      <div class="form-grid">
+        <div class="field"><label>From</label><input type="date" id="excelFrom"></div>
+        <div class="field"><label>To</label><input type="date" id="excelTo"></div>
+        <div class="field full" id="excelLocationField" style="display:none;"><label>Location</label><select id="excelLocation"><option value="">All Locations</option></select></div>
+      </div>
       <div class="field-hint" style="margin-top:8px;">Defaults to the current week (Mon–Sun).</div>
     </div>
     <div class="modal-footer"><div></div><div class="footer-right"><button class="btn-light" id="btnCancelExcel">Cancel</button><button class="btn-primary" id="btnRunExcelExport">Download .xlsx</button></div></div>
@@ -1446,7 +1468,14 @@ function renderPlan(){
 // ============================================================
 const settingsOverlay = document.getElementById('settingsModalOverlay');
 document.getElementById('btnSettings').addEventListener('click', ()=>{
-  document.getElementById('staffLocTag').textContent = currentUser.role==='admin' ? '(add to a location from Admin Panel)' : currentUser.location;
+  document.getElementById('staffLocTag').textContent = currentUser.role==='admin' ? '' : currentUser.location;
+  const locSel = document.getElementById('staffAddLocation');
+  if(currentUser.role === 'admin'){
+    locSel.style.display = 'inline-block';
+    locSel.innerHTML = locations.map(l=>`<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('') || '<option value="">Add a location first</option>';
+  }else{
+    locSel.style.display = 'none';
+  }
   renderStaffManageList(); refreshNotifStatus(); settingsOverlay.classList.add('open');
 });
 document.getElementById('btnCloseSettingsModal').addEventListener('click', ()=> settingsOverlay.classList.remove('open'));
@@ -1466,10 +1495,12 @@ document.getElementById('btnAddStaff').addEventListener('click', async ()=>{
   const input = document.getElementById('newStaffName');
   const name = input.value.trim();
   if(!name) return;
-  if(staffList.some(s=>s.name===name)){ showToast('Already in the list'); return; }
+  const location = currentUser.role === 'admin' ? document.getElementById('staffAddLocation').value : currentUser.location;
+  if(!location){ showToast('⚠ Pick a location first (add one in Admin Panel if the list is empty)'); return; }
+  if(staffList.some(s=>s.name===name && s.location===location)){ showToast('Already in that location\'s list'); return; }
   try{
-    await db.collection('staff').add({ name, location: currentUser.location || (locations[0]&&locations[0].name), createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    input.value=''; showToast('✓ Added ' + name);
+    await db.collection('staff').add({ name, location, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    input.value=''; showToast('✓ Added ' + name + ' to ' + location);
   }catch(err){ showToast('⚠ ' + err.message); }
 });
 
@@ -1494,6 +1525,14 @@ document.getElementById('btnExportExcel').addEventListener('click', ()=>{
   const fmt = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   document.getElementById('excelFrom').value = fmt(monday);
   document.getElementById('excelTo').value = fmt(sunday);
+  const locField = document.getElementById('excelLocationField');
+  if(currentUser.role === 'admin'){
+    locField.style.display = 'block';
+    const sel = document.getElementById('excelLocation');
+    sel.innerHTML = '<option value="">All Locations</option>' + locations.map(l=>`<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('');
+  }else{
+    locField.style.display = 'none';
+  }
   excelOverlay.classList.add('open');
 });
 document.getElementById('btnCloseExcelModal').addEventListener('click', ()=> excelOverlay.classList.remove('open'));
@@ -1501,9 +1540,11 @@ document.getElementById('btnCancelExcel').addEventListener('click', ()=> excelOv
 excelOverlay.addEventListener('click', e=>{ if(e.target===excelOverlay) excelOverlay.classList.remove('open'); });
 document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
   const from = document.getElementById('excelFrom').value, to = document.getElementById('excelTo').value;
+  const locFilter = currentUser.role === 'admin' ? document.getElementById('excelLocation').value : currentUser.location;
   if(!from||!to){ showToast('⚠ Pick both dates'); return; }
-  const filtered = visits.filter(v=> v.date>=from && v.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
-  if(filtered.length===0){ showToast('No visits in that range'); return; }
+  let filtered = visits.filter(v=> v.date>=from && v.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
+  if(locFilter) filtered = filtered.filter(v=> v.location === locFilter);
+  if(filtered.length===0){ showToast('No visits in that range/location'); return; }
   const rows = filtered.map(v=>{
     const c = getCollege(v.collegeId) || {};
     return {
@@ -1517,7 +1558,8 @@ document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
   ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:12},{wch:11},{wch:30}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Visits');
-  XLSX.writeFile(wb, `arena-weekly-report-${from}-to-${to}.xlsx`);
+  const locSuffix = locFilter ? '-' + locFilter.toLowerCase().replace(/\s+/g,'') : '-all-locations';
+  XLSX.writeFile(wb, `arena-weekly-report${locSuffix}-${from}-to-${to}.xlsx`);
   excelOverlay.classList.remove('open'); showToast('✓ Excel report downloaded');
 });
 
@@ -1681,6 +1723,11 @@ if('serviceWorker' in navigator){
 }
 
 document.getElementById('btnSeedCST').addEventListener('click', seedCSTIfEmpty);
+
+// Explicit toolbar "add" buttons — visible on desktop too (unlike the mobile-only FAB),
+// and let you log a visit directly without opening a college first.
+document.getElementById('btnAddCollegeTab').addEventListener('click', ()=> openCollegeModal(null));
+document.getElementById('btnAddVisitTab').addEventListener('click', ()=> openVisitModal(null));
 
 </script>
 </body>
