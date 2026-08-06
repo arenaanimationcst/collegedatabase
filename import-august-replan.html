@@ -24,7 +24,7 @@
 <body>
 <div class="card">
   <h1>One-time Import — August 2026 Replan</h1>
-  <p>Imports 25 scheduled "Talk" visits (10–20 Aug 2026) into <strong>CST</strong>, matched to your existing colleges, plus one new college and a "Follow up" checklist item on each. Log in with your admin account, then tap Import once.</p>
+  <p>Imports 25 scheduled "Talk" visits (10–20 Aug 2026) into <strong>CST</strong>, matched to your existing colleges, plus a "Follow up" checklist item on each college visited. Log in with your admin account, then tap Import once.</p>
 
   <div id="loginBox">
     <input type="email" id="email" placeholder="Admin email">
@@ -124,11 +124,6 @@ document.getElementById('btnImport').addEventListener('click', async ()=>{
     const batch = db.batch();
     const user = auth.currentUser;
 
-    log('Adding new college: ' + NEW_COLLEGE.name);
-    batch.set(db.collection('colleges').doc(NEW_COLLEGE_ID), {
-      ...NEW_COLLEGE, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: user.uid,
-    });
-
     log('Adding/updating c009 (AP College) with confirmed name/address…');
     batch.set(db.collection('colleges').doc('c009'), {
       ...AP_COLLEGE_UPDATE, location: 'CST',
@@ -162,7 +157,7 @@ document.getElementById('btnImport').addEventListener('click', async ()=>{
 
     log('Writing to Firestore…');
     await batch.commit();
-    log('✓ Done. ' + VISITS.length + ' visits, 1 new college, 1 college updated, ' + seenColleges.size + ' checklist items added.');
+    log('✓ Done. ' + VISITS.length + ' visits, 1 college updated (AP College), ' + seenColleges.size + ' checklist items added.');
     log('You can close this page now and open the main app — everything will already be there.');
   }catch(err){
     log('✗ Error: ' + err.message);
