@@ -551,6 +551,7 @@ input[type=file]{display:none;}
           <div class="field"><label>Stream</label><input type="text" id="vStream"></div>
           <div class="field"><label>Activity Type</label><select id="vActivityType"><option>Seminar</option><option>Workshop</option><option>Event</option><option>Talk</option></select></div>
           <div class="field"><label>Status</label><select id="vStatus"><option>Scheduled</option><option>Done</option><option>Postponed</option><option>Cancelled</option></select></div>
+          <div class="field full"><label>Met With</label><select id="vMetContact"><option value="__none">No contact met</option></select></div>
 
           <div class="field full reminder-row">
             <label class="switch-label"><input type="checkbox" id="vReminderEnabled"><span>🔔 Set a reminder for this visit</span></label>
@@ -755,12 +756,12 @@ auth.onAuthStateChanged(async (user)=>{
       return;
     }
     const profile = docSnap.data();
-    currentUser = { uid: user.uid, email: user.email, name: profile.name || user.email, role: profile.role, location: profile.location };
+    currentUser = { uid: user.uid, email: user.email, name: profile.name || user.email, role: profile.role, location: profile.location, isMaster: !!profile.isMaster };
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appShell').style.display = 'block';
     document.getElementById('btnAdminPanel').style.display = currentUser.role === 'admin' ? 'inline-flex' : 'none';
     document.getElementById('headerLocationLabel').textContent = currentUser.role === 'admin' ? 'College Directory · All Locations' : 'College Directory · ' + currentUser.location;
-    document.getElementById('drawerUserLabel').textContent = currentUser.name + (currentUser.role==='admin' ? ' (Admin)' : ' · ' + currentUser.location);
+    document.getElementById('drawerUserLabel').textContent = currentUser.name + (currentUser.isMaster ? ' (Master Admin)' : currentUser.role==='admin' ? ' (Admin)' : ' · ' + currentUser.location);
     document.getElementById('cFilterLocation').style.display = currentUser.role==='admin' ? 'block' : 'none';
     attachListeners();
     initCalendar();
@@ -1275,6 +1276,7 @@ function renderVisits(){
         <div class="vc-college" onclick="openDetailModal('${v.collegeId}')">${escapeHtml(c?c.name:'(deleted college)')}</div>
         <div class="vc-line">🕐 ${timeRangeDisplay(v) || '—'}</div>
         <div class="vc-line">👥 ${escapeHtml(v.staff||'—')}</div>
+        ${v.metContactName ? `<div class="vc-line">🤝 Met: ${escapeHtml(v.metContactName)}</div>` : ''}
         <div class="vc-meta">
           <span class="badge ${tierBadgeClass(c?c.tier:'')}">${c&&c.tier?c.tier:'Unassigned'}</span>
           <span class="badge badge-outline">${escapeHtml(v.activityType||'')}</span>
@@ -1303,7 +1305,17 @@ function populateCollegeSelect(selectedId){
   const sorted = [...colleges].sort((a,b)=>a.name.localeCompare(b.name));
   sel.innerHTML = '<option value="">Select a college…</option>' + sorted.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${currentUser.role==='admin'?' — '+escapeHtml(c.location||''):''}</option>`).join('');
   if(selectedId) sel.value = selectedId;
+  populateMetContactSelect(selectedId||'');
 }
+function populateMetContactSelect(collegeId, selectedContactId){
+  const sel = document.getElementById('vMetContact');
+  const c = getCollege(collegeId);
+  const contacts = (c && c.contacts) || [];
+  const opts = contacts.map(ct=>`<option value="${ct.id}">${escapeHtml(ct.name)}${ct.designation?' — '+escapeHtml(ct.designation):''}${ct.wing?' ('+escapeHtml(ct.wing)+')':''}</option>`).join('');
+  sel.innerHTML = '<option value="__none">No contact met</option>' + opts;
+  sel.value = selectedContactId || '__none';
+}
+document.getElementById('vCollegeId').addEventListener('change', function(){ populateMetContactSelect(this.value); });
 function renderStaffChips(){
   const wrap = document.getElementById('vStaffChips');
   wrap.innerHTML = staffList.map(s=>`<div class="chip ${vStaffSelected.includes(s.name)?'active':''}" data-name="${escapeHtml(s.name)}">${escapeHtml(s.name)}</div>`).join('') || '<div class="field-hint">No staff added yet — add some in ⚙ Settings.</div>';
@@ -1349,6 +1361,7 @@ function openVisitModal(id, presetCollegeId){
     document.getElementById('vActivityType').value = v.activityType||'Seminar';
     document.getElementById('vStatus').value = v.status||'Scheduled';
     document.getElementById('vNotes').value = v.notes||'';
+    populateMetContactSelect(v.collegeId, v.metContactId);
     if(v.reminder && v.reminder.enabled){
       document.getElementById('vReminderEnabled').checked = true;
       document.querySelector('.reminder-row').classList.add('enabled');
@@ -1405,6 +1418,8 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
   if(!collegeId){ showToast('⚠ Please select a college'); return; }
   const c = getCollege(collegeId);
   const id = document.getElementById('vId').value;
+  const metContactId = document.getElementById('vMetContact').value;
+  const metContact = metContactId && metContactId !== '__none' ? (c.contacts||[]).find(ct=>ct.id===metContactId) : null;
   const record = {
     collegeId, location: c.location,
     date: document.getElementById('vDate').value,
@@ -1416,6 +1431,8 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
     activityType: document.getElementById('vActivityType').value,
     status: document.getElementById('vStatus').value,
     notes: document.getElementById('vNotes').value.trim(),
+    metContactId: metContact ? metContact.id : null,
+    metContactName: metContact ? metContact.name + (metContact.designation ? ' — ' + metContact.designation : '') : '',
     reminder: buildReminderPayload(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     updatedBy: currentUser.uid,
@@ -1571,11 +1588,11 @@ document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
       'Date': formatDateDisplay(v.date), 'Day': dayFromDate(v.date), 'Start': formatTime12(v.startTime), 'End': formatTime12(v.endTime),
       'Location': c.location||'', 'College': c.name||'', 'Address': c.address||'', 'Pin Code': c.pinCode||'',
       'Tier': c.tier||'', 'Type': c.collegeType||'', 'Concerned Person': c.contactPerson||'', 'Contact Number': c.contactNumber||'',
-      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'', 'Activity': v.activityType||'', 'Status': v.status||'', 'Notes': v.notes||'',
+      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'', 'Met With': v.metContactName || 'No contact met', 'Activity': v.activityType||'', 'Status': v.status||'', 'Notes': v.notes||'',
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:12},{wch:11},{wch:30}];
+  ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:24},{wch:12},{wch:11},{wch:30}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Visits');
   const locSuffix = locFilter ? '-' + locFilter.toLowerCase().replace(/\s+/g,'') : '-all-locations';
@@ -1616,13 +1633,16 @@ document.getElementById('newUserRole').addEventListener('change', function(){
   document.getElementById('newUserLocationField').style.display = this.value==='user' ? 'block' : 'none';
 });
 function genPassword(){
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let out = '';
-  for(let i=0;i<10;i++) out += chars[Math.floor(Math.random()*chars.length)];
-  return out;
+  const nameField = document.getElementById('newUserName').value.trim();
+  const base = (nameField.split(/\s+/)[0] || 'user').toLowerCase().replace(/[^a-z0-9]/g,'') || 'user';
+  const num = Math.floor(100 + Math.random()*900); // 3-digit
+  let pw = base + '@' + num;
+  if(pw.length < 6) pw += Math.floor(Math.random()*10); // Firebase requires 6+ chars
+  return pw;
 }
 let generatedPassword = '';
 document.getElementById('btnGeneratePassword').addEventListener('click', ()=>{
+  if(!document.getElementById('newUserName').value.trim()){ showToast('⚠ Enter their name first — the password is built from it'); return; }
   generatedPassword = genPassword();
   const email = document.getElementById('newUserEmail').value.trim() || '(fill in email/ID above)';
   document.getElementById('credBox').innerHTML = `<div class="cb-label">Email / ID</div>${escapeHtml(email)}<div class="cb-label" style="margin-top:6px;">Password</div>${escapeHtml(generatedPassword)}`;
@@ -1658,8 +1678,20 @@ function renderUserManageList(){
   if(allUsers.length===0){ wrap.innerHTML = '<div class="field-hint">No users yet.</div>'; return; }
   wrap.innerHTML = allUsers.map(u=>`
     <div class="user-row">
-      <div><div class="ur-name">${escapeHtml(u.name||u.email)}</div><div class="ur-meta">${escapeHtml(u.email||'')} · ${u.role==='admin'?'Admin':'User — '+escapeHtml(u.location||'')}</div></div>
+      <div><div class="ur-name">${escapeHtml(u.name||u.email)}${u.isMaster?' 👑':''}</div><div class="ur-meta">${escapeHtml(u.email||'')} · ${u.isMaster?'Master Admin':u.role==='admin'?'Admin':'User — '+escapeHtml(u.location||'')}</div></div>
+      ${u.isMaster ? '<span class="loc-tag">Protected</span>' : `<button class="btn-danger btn-sm" onclick="deleteUser('${u.id}','${escapeHtml(u.name||u.email)}',${u.role==='admin'})">Delete</button>`}
     </div>`).join('');
+}
+async function deleteUser(uid, name, isAdminRole){
+  const msg = isAdminRole
+    ? `Delete admin account "${name}"? They will immediately lose all access. This does not remove their login from Firebase Authentication — do that separately in the Firebase Console if you want it fully gone.`
+    : `Delete user "${name}"? They will immediately lose all access. This does not remove their login from Firebase Authentication — do that separately in the Firebase Console if you want it fully gone.`;
+  if(!confirm(msg)) return;
+  if(isAdminRole && !confirm(`Just to be sure — "${name}" is an ADMIN account with full access to every location. Really delete?`)) return;
+  try{
+    await db.collection('users').doc(uid).delete();
+    showToast('✓ ' + name + ' removed — they can no longer sign in');
+  }catch(err){ showToast('⚠ ' + err.message); }
 }
 
 // ============================================================
