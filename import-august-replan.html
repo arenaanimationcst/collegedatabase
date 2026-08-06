@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One-time Import — August 2026 Replan</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  body{font-family:'Segoe UI',Roboto,Arial,sans-serif; background:#f4f4f2; margin:0; padding:20px; color:#1a1a1a;}
+  .card{background:#fff; border-radius:12px; padding:22px; max-width:520px; margin:0 auto; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  h1{font-size:17px; margin:0 0 4px;}
+  p{font-size:13px; color:#5a5a5a; line-height:1.6;}
+  input{width:100%; padding:10px; border-radius:8px; border:1px solid #e4e4e4; background:#f4f4f2; font-size:14px; margin-bottom:10px; box-sizing:border-box;}
+  button{width:100%; padding:12px; border-radius:8px; border:none; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:8px;}
+  .btn-primary{background:#E4272C; color:#fff;}
+  .btn-primary:disabled{background:#ccc; cursor:not-allowed;}
+  #log{background:#1a1a1a; color:#0f0; font-family:monospace; font-size:12px; padding:12px; border-radius:8px; margin-top:14px; max-height:300px; overflow-y:auto; white-space:pre-wrap; display:none;}
+  .warn{background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:10px 12px; font-size:12.5px; margin:12px 0;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>One-time Import — August 2026 Replan</h1>
+  <p>Imports 25 scheduled "Talk" visits (10–20 Aug 2026) into <strong>CST</strong>, matched to your existing colleges, plus one new college and a "Follow up" checklist item on each. Log in with your admin account, then tap Import once.</p>
+
+  <div id="loginBox">
+    <input type="email" id="email" placeholder="Admin email">
+    <input type="password" id="password" placeholder="Password">
+    <button class="btn-primary" id="btnLogin">Sign In</button>
+    <div id="loginMsg" style="font-size:12.5px; color:#B31E22;"></div>
+  </div>
+
+  <div id="importBox" style="display:none;">
+    <div class="warn">Signed in as <strong id="whoami"></strong>. This is safe to run once — it checks first and refuses to run again if it detects this batch was already imported.</div>
+    <button class="btn-primary" id="btnImport">Import August 2026 Replan (25 visits)</button>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script>
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const IMPORT_TAG = 'AUG2026_REPLAN_IMPORT';
+
+function log(msg){
+  const el = document.getElementById('log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('btnLogin').addEventListener('click', async ()=>{
+  const email = document.getElementById('email').value.trim();
+  const pw = document.getElementById('password').value;
+  const msgEl = document.getElementById('loginMsg');
+  msgEl.textContent = '';
+  try{
+    const cred = await auth.signInWithEmailAndPassword(email, pw);
+    const profile = await db.collection('users').doc(cred.user.uid).get();
+    if(!profile.exists || profile.data().role !== 'admin'){
+      msgEl.textContent = 'This tool only works for an admin account.';
+      await auth.signOut();
+      return;
+    }
+    document.getElementById('whoami').textContent = profile.data().name || email;
+    document.getElementById('loginBox').style.display = 'none';
+    document.getElementById('importBox').style.display = 'block';
+  }catch(err){
+    msgEl.textContent = err.message;
+  }
+});
+
+// ---- Mapping: replan rows -> existing college doc IDs (from your CST directory) ----
+// New college (not previously in your directory):
+const NEW_COLLEGE_ID = 'c031';
+const NEW_COLLEGE = {
+  name: "Anjuman-I-Islam's Akbar Peerbhoy College",
+  address: 'Nagpada, Mumbai', pinCode: '400008', collegeType: 'Junior & Degree College',
+  tier: '', streams: '', contactPerson: '', contactNumber: '', contactEmail: '',
+  notes: '', location: 'CST',
+};
+// Update to existing c009 "AP College" now that its real name/address is confirmed:
+const AP_COLLEGE_UPDATE = { name: 'A.P. College (Akbar Peerbhoy)', address: 'Nagpada, Mumbai', pinCode: '400008' };
+
+const VISITS = [
+  { date:'2026-08-10', collegeId:'c001' },
+  { date:'2026-08-10', collegeId:'c002' },
+  { date:'2026-08-10', collegeId:NEW_COLLEGE_ID },
+  { date:'2026-08-11', collegeId:'c009' },
+  { date:'2026-08-11', collegeId:'c029' },
+  { date:'2026-08-11', collegeId:'c005' },
+  { date:'2026-08-12', collegeId:'c024' },
+  { date:'2026-08-12', collegeId:'c030' },
+  { date:'2026-08-12', collegeId:'c013' },
+  { date:'2026-08-13', collegeId:'c017' },
+  { date:'2026-08-13', collegeId:'c018' },
+  { date:'2026-08-13', collegeId:'c012', notes:'Replan sheet listed this visit\'s address as Churchgate — your stored college record has SNDT\'s Juhu campus address. Verify which campus before the visit.' },
+  { date:'2026-08-14', collegeId:'c010' },
+  { date:'2026-08-14', collegeId:'c011' },
+  { date:'2026-08-14', collegeId:'c014' },
+  { date:'2026-08-17', collegeId:'c020' },
+  { date:'2026-08-17', collegeId:'c023' },
+  { date:'2026-08-17', collegeId:'c015' },
+  { date:'2026-08-18', collegeId:'c016' },
+  { date:'2026-08-18', collegeId:'c004' },
+  { date:'2026-08-18', collegeId:'c006' },
+  { date:'2026-08-19', collegeId:'c028' },
+  { date:'2026-08-19', collegeId:'c007' },
+  { date:'2026-08-19', collegeId:'c008' },
+  { date:'2026-08-20', collegeId:'c025' },
+];
+
+document.getElementById('btnImport').addEventListener('click', async ()=>{
+  const btn = document.getElementById('btnImport');
+  btn.disabled = true;
+  log('Checking whether this batch was already imported…');
+  try{
+    const existing = await db.collection('visits').where('importTag','==', IMPORT_TAG).limit(1).get();
+    if(!existing.empty){
+      log('⚠ Already imported — found a visit tagged ' + IMPORT_TAG + '. Stopping to avoid duplicates.');
+      return;
+    }
+
+    const batch = db.batch();
+    const user = auth.currentUser;
+
+    log('Adding new college: ' + NEW_COLLEGE.name);
+    batch.set(db.collection('colleges').doc(NEW_COLLEGE_ID), {
+      ...NEW_COLLEGE, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: user.uid,
+    });
+
+    log('Updating c009 (AP College) with confirmed name/address…');
+    batch.update(db.collection('colleges').doc('c009'), {
+      ...AP_COLLEGE_UPDATE, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid,
+    });
+
+    log('Queuing ' + VISITS.length + ' visits (status: Scheduled, activity: Talk)…');
+    const seenColleges = new Set();
+    VISITS.forEach(v=>{
+      const ref = db.collection('visits').doc();
+      batch.set(ref, {
+        collegeId: v.collegeId, location: 'CST', date: v.date,
+        startTime: '', endTime: '', staff: '', classYear: '', stream: '',
+        activityType: 'Talk', status: 'Scheduled',
+        notes: v.notes || '',
+        reminder: { enabled: false },
+        importTag: IMPORT_TAG,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: user.uid,
+      });
+      seenColleges.add(v.collegeId);
+    });
+
+    log('Adding a "Follow up" checklist item to each of the ' + seenColleges.size + ' colleges…');
+    seenColleges.forEach(collegeId=>{
+      const ref = db.collection('checklistItems').doc();
+      batch.set(ref, {
+        collegeId, location: 'CST', text: 'Follow up after Talk visit (Aug 2026 replan)', done: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: user.uid,
+      });
+    });
+
+    log('Writing to Firestore…');
+    await batch.commit();
+    log('✓ Done. ' + VISITS.length + ' visits, 1 new college, 1 college updated, ' + seenColleges.size + ' checklist items added.');
+    log('You can close this page now and open the main app — everything will already be there.');
+  }catch(err){
+    log('✗ Error: ' + err.message);
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
