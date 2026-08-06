@@ -300,6 +300,19 @@ input[type=file]{display:none;}
 
 .add-staff-row select{flex-shrink:0; padding:9px 8px; border-radius:8px; border:1px solid var(--gray-200); background:var(--gray-100); font-size:12.5px;}
 
+/* Multi-contact list per college */
+.contact-row{background:var(--gray-100); border-radius:8px; padding:9px 11px; margin-bottom:6px;}
+.contact-row-top{display:flex; justify-content:space-between; align-items:center; gap:8px;}
+.contact-row .cr-name{font-weight:700; font-size:13px;}
+.contact-row .cr-desig{font-size:10px; font-weight:700; background:var(--gray-800); color:#fff; border-radius:12px; padding:2px 9px; white-space:nowrap;}
+.contact-row .cr-meta{display:flex; align-items:center; gap:8px; margin-top:5px; font-size:12px; color:var(--gray-600); flex-wrap:wrap;}
+.contact-row .cr-section-tag{background:#eef1f5; color:#33475b; border-radius:10px; padding:2px 8px; font-weight:600; font-size:10.5px;}
+.contact-row .cr-actions{display:flex; gap:6px; margin-left:auto;}
+.contact-row .cr-actions a, .contact-row .cr-actions button{padding:5px 9px; border-radius:6px; font-size:11px; text-decoration:none;}
+.contact-row .cr-call{background:#e8f5ee; color:#1f8a4c;}
+.contact-row .cr-wa{background:#e6f7ee; color:#25955a;}
+.contact-row .cr-del{background:#fde8e8; color:var(--red-dark); border:none;}
+
 </style>
 </head>
 <body>
@@ -478,6 +491,21 @@ input[type=file]{display:none;}
           <div><div class="dl-label">Contact Number</div><div class="dl-value" id="dContactNumber">—</div></div>
         </div>
         <div style="margin-top:10px;"><div class="dl-label">Notes</div><div class="dl-value" id="dNotes" style="font-weight:400;">—</div></div>
+      </div>
+      <div class="detail-section">
+        <h3>Contacts</h3>
+        <div id="dContactsList"></div>
+        <div class="form-grid" style="margin-top:8px;">
+          <div class="field"><label>Name</label><input type="text" id="newContactName" placeholder="e.g. Mrs. Kulkarni"></div>
+          <div class="field"><label>Designation</label>
+            <select id="newContactDesignation">
+              <option>Principal</option><option>Vice Principal</option><option>HOD</option><option>Staff</option><option>Faculty</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>Section</label><input type="text" id="newContactSection" placeholder="e.g. Commerce, Arts, BMM"></div>
+          <div class="field"><label>Phone</label><input type="tel" id="newContactPhone" placeholder="10-digit mobile"></div>
+        </div>
+        <button class="btn-primary btn-sm" id="btnAddContact" style="margin-top:8px;">+ Add Contact</button>
       </div>
       <div class="detail-section">
         <h3>Activity Coverage</h3>
@@ -1154,6 +1182,7 @@ function openDetailModal(id){
     qa.innerHTML = `<span class="qa-disabled" style="flex:1; padding:12px; border-radius:10px; text-align:center; font-size:12px;">No contact number on file — add one to enable Call / WhatsApp</span>`;
   }
 
+  renderContacts(c);
   renderActivityBadges(id);
   renderChecklist();
 
@@ -1186,6 +1215,56 @@ function renderActivityBadges(collegeId){
   document.getElementById('dActivityBadges').innerHTML = types.map(t=>`
     <div class="act-badge ${doneTypes.has(t)?'done':''}"><span class="dot"></span>${t}${doneTypes.has(t)?' ✓':''}</div>
   `).join('');
+}
+
+// Multi-contact list (Principal / VP / HOD / Staff / Faculty, per section)
+function renderContacts(c){
+  const wrap = document.getElementById('dContactsList');
+  const contacts = c.contacts || [];
+  if(contacts.length===0){ wrap.innerHTML = '<div class="field-hint">No contacts added yet.</div>'; return; }
+  wrap.innerHTML = contacts.map(ct=>`
+    <div class="contact-row">
+      <div class="contact-row-top">
+        <span class="cr-name">${escapeHtml(ct.name)}</span>
+        <span class="cr-desig">${escapeHtml(ct.designation||'')}</span>
+      </div>
+      <div class="cr-meta">
+        ${ct.section?`<span class="cr-section-tag">${escapeHtml(ct.section)}</span>`:''}
+        ${ct.phone?`<span>${escapeHtml(ct.phone)}</span>`:''}
+        <span class="cr-actions">
+          ${ct.phone?`<a class="cr-call" href="tel:${dialablePhone(ct.phone)}">📞</a><a class="cr-wa" href="${whatsappLink(ct.phone)}" target="_blank" rel="noopener">💬</a>`:''}
+          <button class="cr-del" onclick="removeContact('${c.id}','${ct.id}')">✕</button>
+        </span>
+      </div>
+    </div>`).join('');
+}
+document.getElementById('btnAddContact').addEventListener('click', async ()=>{
+  if(!detailCollegeId) return;
+  const name = document.getElementById('newContactName').value.trim();
+  if(!name){ showToast('⚠ Enter a name'); return; }
+  const contact = {
+    id: uid('ct'),
+    name,
+    designation: document.getElementById('newContactDesignation').value,
+    section: document.getElementById('newContactSection').value.trim(),
+    phone: document.getElementById('newContactPhone').value.trim(),
+  };
+  const c = getCollege(detailCollegeId);
+  const contacts = [...(c.contacts||[]), contact];
+  try{
+    await db.collection('colleges').doc(detailCollegeId).update({ contacts, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: currentUser.uid });
+    document.getElementById('newContactName').value = '';
+    document.getElementById('newContactSection').value = '';
+    document.getElementById('newContactPhone').value = '';
+    document.getElementById('newContactDesignation').value = 'Principal';
+    showToast('✓ Contact added');
+  }catch(err){ showToast('⚠ ' + err.message); }
+});
+async function removeContact(collegeId, contactId){
+  const c = getCollege(collegeId);
+  const contacts = (c.contacts||[]).filter(ct=>ct.id!==contactId);
+  try{ await db.collection('colleges').doc(collegeId).update({ contacts }); showToast('Contact removed'); }
+  catch(err){ showToast('⚠ ' + err.message); }
 }
 
 // Checklist (lightweight to-dos per college)
