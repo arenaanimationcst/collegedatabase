@@ -502,8 +502,13 @@ input[type=file]{display:none;}
               <option>Principal</option><option>Vice Principal</option><option>HOD</option><option>Staff</option><option>Faculty</option><option>Other</option>
             </select>
           </div>
+          <div class="field"><label>Wing</label>
+            <select id="newContactWing">
+              <option value="">Not specified</option><option>Junior College</option><option>Degree College</option>
+            </select>
+          </div>
           <div class="field"><label>Section</label><input type="text" id="newContactSection" placeholder="e.g. Commerce, Arts, BMM"></div>
-          <div class="field"><label>Phone</label><input type="tel" id="newContactPhone" placeholder="10-digit mobile"></div>
+          <div class="field full"><label>Phone</label><input type="tel" id="newContactPhone" placeholder="10-digit mobile"></div>
         </div>
         <button class="btn-primary btn-sm" id="btnAddContact" style="margin-top:8px;">+ Add Contact</button>
       </div>
@@ -612,7 +617,6 @@ input[type=file]{display:none;}
         <h3>Locations</h3>
         <div class="staff-manage-list" id="locationManageList"></div>
         <div class="add-staff-row"><input type="text" id="newLocationName" placeholder="e.g. Vashi"><button class="btn-primary btn-sm" id="btnAddLocation">Add</button></div>
-        <button class="btn-light btn-sm" id="btnSeedCST" style="margin-top:10px;">📥 Load CST Starter Data (30 colleges + history)</button>
       </div>
       <div class="detail-section">
         <h3>Create User</h3>
@@ -667,72 +671,6 @@ input[type=file]{display:none;}
 </div> <!-- /appShell -->
 
 <script>
-// ============== Seed Data ==============
-const SEED_STAFF = ['Faiz', 'Mahesh Sir', 'Pushkar', 'Mobin'];
-
-const SEED_COLLEGES = [
-  {id:'c001', location:'CST', name:'Hume College', address:'337, Sir J.J. Road, Byculla', pinCode:'400027', collegeType:'Junior College', tier:'', streams:'Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c002', location:'CST', name:'Maharashtra College', address:'246-A, Jahangir Boman Behram Marg, Bellasis Road', pinCode:'400008', collegeType:'Degree College', tier:'', streams:'Arts, Science, Commerce, IT/CS', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c003', location:'CST', name:"Anjuman-I-Islam College (Saifi Tayabji)", address:'Bldg 260, Saboo Baug, J.B.B. Marg, Mumbai Central', pinCode:'400008', collegeType:'Junior College', tier:'', streams:'Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c004', location:'CST', name:'N.S.S. College', address:"N.S.S. Educational Complex, 'B' Wing, M.P. Mills Compound, Behind AC Market, Tardeo", pinCode:'400034', collegeType:'Degree College', tier:'', streams:'Commerce, Arts, Science, Banking', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c005', location:'CST', name:'Cummo Jaffer College', address:'Kambekar Street, Masjid Bunder', pinCode:'400003', collegeType:'Junior & Degree College', tier:'', streams:'Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c006', location:'CST', name:"Lala's College", address:'Lala Lajpatrai College of Commerce & Economics, Lala Lajpatrai Marg, Mahalaxmi', pinCode:'400034', collegeType:'Degree College', tier:'', streams:'Commerce, Arts, BMS, BAF, IT', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c007', location:'CST', name:'Elly Kadoorie Jr College', address:'Sir Elly Kadoorie School and Jr College, Shivdas Champsi Marg, Mazgaon', pinCode:'400010', collegeType:'Junior College', tier:'', streams:'', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c008', location:'CST', name:'Navneet Jr College', address:'Gilder Lane Municipal School Bldg, Belasis Bridge, Opp Railway Station, Mumbai Central', pinCode:'400008', collegeType:'Junior College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c009', location:'CST', name:'AP College', address:'', pinCode:'', collegeType:'Junior & Degree College', tier:'', streams:'Commerce, Arts, BMM', contactPerson:'', contactNumber:'', contactEmail:'', notes:'Address not confirmed — please add manually.'},
-  {id:'c010', location:'CST', name:'Siddharth College - Anand Bhavan', address:'Anand Bhavan, Dr. D. N. Road, Fort', pinCode:'400001', collegeType:'Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:'Administrative office of Siddharth College; lectures held at Buddha Bhavan.'},
-  {id:'c011', location:'CST', name:'Siddharth College - Buddha Bhavan', address:'Buddha Bhavan, Purshotamdas Thakurdas Marg (Outram Road), Fort', pinCode:'400001', collegeType:'Junior & Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c012', location:'CST', name:"SNDT Women's College (Juhu)", address:"SNDT Women's University, Juhu Road, Santacruz (West)", pinCode:'400049', collegeType:'Degree College', tier:'', streams:'BMS, Mass Media, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c013', location:'CST', name:'Bai Kabi Bai JR College', address:'26, Bora Bazar Street, Fort', pinCode:'400001', collegeType:'Junior College', tier:'', streams:'Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c014', location:'CST', name:'Elphinstone College', address:'156, M.G. Road, Fort', pinCode:'400032', collegeType:'Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c015', location:'CST', name:'Hinduja JR College', address:'KPB Hinduja College, 315, New Charni Road, Charni Road East', pinCode:'400004', collegeType:'Junior & Degree College', tier:'', streams:'Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c016', location:'CST', name:"Sophia's College", address:'Bhulabhai Desai Road', pinCode:'400026', collegeType:'Degree College', tier:'', streams:'Arts, Science, BMM', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c017', location:'CST', name:'Jaihind College', address:'A Road, Churchgate', pinCode:'400020', collegeType:'Junior & Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c018', location:'CST', name:'HR College', address:'123, Dinshaw Wachha Road, Churchgate', pinCode:'400020', collegeType:'Degree College', tier:'', streams:'Commerce, Economics, BMS', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c019', location:'CST', name:"Bhavan's Hazarimal College", address:'Kulapati K.M. Munshi Marg, Girgaum Chowpatty', pinCode:'400007', collegeType:'Junior & Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c020', location:'CST', name:'Wilson College', address:'192, Chowpatty Seaface, Gamdevi', pinCode:'400007', collegeType:'Degree College', tier:'', streams:'Arts, Science, IT, Mass Media', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c021', location:'CST', name:'Kannada Bhavan Education Society', address:'14, Police Court Lane, Fort', pinCode:'400001', collegeType:'Junior College', tier:'', streams:'Commerce (Evening)', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c022', location:'CST', name:'BJPC Institution & Junior College', address:'33, M. Karve Marg, Opp. Charni Road Railway Station, Girgaon', pinCode:'400004', collegeType:'Junior College', tier:'', streams:'Science, Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c023', location:'CST', name:'BM Ruia Girls College', address:'11, Krishna Kunj, Vachha Gandhi Road, Gamdevi', pinCode:'400007', collegeType:'Degree College', tier:'', streams:'Arts, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c024', location:'CST', name:"St Xavier's College - Fort", address:'5, Mahapalika Marg', pinCode:'400001', collegeType:'Junior & Degree College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c025', location:'CST', name:'Burhani College', address:'10, Nesbit Road, Mazgaon', pinCode:'400010', collegeType:'Degree College', tier:'', streams:'Commerce, Arts, BMM, BMS', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c026', location:'CST', name:'Anjuman Islam - Fort College', address:'Anjuman-I-Islam Allana English High School & Jr College, 92, Dr Dadabhai Naoroji Road, Fort', pinCode:'400001', collegeType:'Junior College', tier:'', streams:'Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c027', location:'CST', name:'Army Public School', address:'Dr. Nanabhoy Moos Road, Near R.C. Church, Opp. INHS Asvini Hospital, Colaba', pinCode:'400005', collegeType:'Junior College', tier:'', streams:'Science, Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c028', location:'CST', name:'JJ School of Arts', address:'Sir J.J. School of Art, 78, Dr. D. N. Road, Fort', pinCode:'400001', collegeType:'Degree College', tier:'', streams:'Fine Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c029', location:'CST', name:'Safa School and Junior College', address:"Babula Tank Cross Lane, Next to BMC 'B' Ward Office", pinCode:'400009', collegeType:'Junior College', tier:'', streams:'Arts, Science, Commerce', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-  {id:'c030', location:'CST', name:'Bharda College', address:'Bharda New High School & Jr College, Hazarimal Somani Marg, Fort', pinCode:'400001', collegeType:'Junior College', tier:'', streams:'Science, Commerce, Arts', contactPerson:'', contactNumber:'', contactEmail:'', notes:''},
-];
-
-const SEED_VISITS = [
-  {collegeId:'c001', location:'CST', date:'2025-11-17', startTime:'13:00', endTime:'15:00', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c002', location:'CST', date:'2025-11-20', startTime:'10:30', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'IT / CS', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c003', location:'CST', date:'2025-11-21', startTime:'10:00', endTime:'12:00', staff:'Faiz, Mahesh Sir', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c003', location:'CST', date:'2025-11-25', startTime:'08:00', endTime:'12:30', staff:'Faiz, Pushkar', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c001', location:'CST', date:'2025-11-25', startTime:'13:00', endTime:'15:00', staff:'Faiz, Pushkar', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c003', location:'CST', date:'2025-11-26', startTime:'08:00', endTime:'12:30', staff:'Faiz', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Postponed', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c001', location:'CST', date:'2025-11-26', startTime:'13:00', endTime:'15:00', staff:'Mahesh Sir, Mobin', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c001', location:'CST', date:'2025-11-27', startTime:'13:00', endTime:'15:00', staff:'Mahesh Sir, Mobin', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c004', location:'CST', date:'2025-11-27', startTime:'08:00', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'SY / TY', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'End time corrected from original log (likely a typo).', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c005', location:'CST', date:'2025-11-28', startTime:'09:00', endTime:'11:00', staff:'Faiz, Mahesh Sir', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c005', location:'CST', date:'2025-11-29', startTime:'10:00', endTime:'12:00', staff:'Faiz, Mahesh Sir', classYear:'FYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c006', location:'CST', date:'2025-12-02', startTime:'13:00', endTime:'16:00', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c007', location:'CST', date:'2025-12-04', startTime:'12:00', endTime:'14:30', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c028', location:'CST', date:'2025-12-08', startTime:'11:30', endTime:'15:30', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c008', location:'CST', date:'2025-12-13', startTime:'14:00', endTime:'16:00', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c009', location:'CST', date:'2025-12-15', startTime:'13:00', endTime:'15:30', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c005', location:'CST', date:'2025-12-18', startTime:'08:00', endTime:'13:30', staff:'Faiz, Pushkar', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c005', location:'CST', date:'2025-12-19', startTime:'08:00', endTime:'13:30', staff:'Faiz, Pushkar', classYear:'FYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c007', location:'CST', date:'2025-12-20', startTime:'11:00', endTime:'15:00', staff:'Faiz, Pushkar', classYear:'FYJC / SYJC', stream:'Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c010', location:'CST', date:'2025-12-22', startTime:'15:00', endTime:'17:00', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c009', location:'CST', date:'2025-12-22', startTime:'10:00', endTime:'12:00', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'BMM', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c005', location:'CST', date:'2025-12-23', startTime:'08:00', endTime:'13:30', staff:'Faiz, Pushkar', classYear:'SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c003', location:'CST', date:'2026-01-06', startTime:'08:00', endTime:'13:30', staff:'Faiz, Mahesh Sir', classYear:'FYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c012', location:'CST', date:'2026-01-07', startTime:'10:30', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'BMS / MIX', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c014', location:'CST', date:'2026-01-09', startTime:'12:30', endTime:'14:30', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c011', location:'CST', date:'2026-01-21', startTime:'10:30', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'BMS / MIX', stream:'Commerce', activityType:'Seminar', status:'Done', notes:'', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c013', location:'CST', date:'2026-01-27', startTime:'11:00', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'FYJC / SYJC', stream:'Commerce / Arts', activityType:'Seminar', status:'Scheduled', notes:'Status not recorded in original list — confirm and update.', reminderEnabled:false, reminderLeadMinutes:30},
-  {collegeId:'c010', location:'CST', date:'2026-01-28', startTime:'10:30', endTime:'12:30', staff:'Faiz, Mahesh Sir', classYear:'Degree', stream:'BMM / BMS', activityType:'Seminar', status:'Scheduled', notes:'Status not recorded in original list — confirm and update.', reminderEnabled:false, reminderLeadMinutes:30},
-];
 // ============================================================
 // FIREBASE INIT
 // ============================================================
@@ -1229,6 +1167,7 @@ function renderContacts(c){
         <span class="cr-desig">${escapeHtml(ct.designation||'')}</span>
       </div>
       <div class="cr-meta">
+        ${ct.wing?`<span class="cr-section-tag">${escapeHtml(ct.wing)}</span>`:''}
         ${ct.section?`<span class="cr-section-tag">${escapeHtml(ct.section)}</span>`:''}
         ${ct.phone?`<span>${escapeHtml(ct.phone)}</span>`:''}
         <span class="cr-actions">
@@ -1246,6 +1185,7 @@ document.getElementById('btnAddContact').addEventListener('click', async ()=>{
     id: uid('ct'),
     name,
     designation: document.getElementById('newContactDesignation').value,
+    wing: document.getElementById('newContactWing').value,
     section: document.getElementById('newContactSection').value.trim(),
     phone: document.getElementById('newContactPhone').value.trim(),
   };
@@ -1257,6 +1197,7 @@ document.getElementById('btnAddContact').addEventListener('click', async ()=>{
     document.getElementById('newContactSection').value = '';
     document.getElementById('newContactPhone').value = '';
     document.getElementById('newContactDesignation').value = 'Principal';
+    document.getElementById('newContactWing').value = '';
     showToast('✓ Contact added');
   }catch(err){ showToast('⚠ ' + err.message); }
 });
@@ -1767,25 +1708,6 @@ function checkReminders(){
 setInterval(checkReminders, 30000);
 
 // ============================================================
-// ONE-TIME STARTER DATA IMPORT (CST) — visible only if no CST colleges exist yet
-// ============================================================
-async function seedCSTIfEmpty(){
-  if(currentUser.role !== 'admin') return;
-  const existing = await db.collection('colleges').where('location','==','CST').limit(1).get();
-  if(!existing.empty) return;
-  if(!confirm('No colleges found for CST yet. Load the 30 starter colleges + 28 historical visits for CST now?')) return;
-  try{
-    const batch = db.batch();
-    SEED_COLLEGES.forEach(c=>{ const {id, ...rest} = c; batch.set(db.collection('colleges').doc(id), rest); });
-    SEED_VISITS.forEach(v=>{ const ref = db.collection('visits').doc(); batch.set(ref, {...v, reminder:{enabled:false}}); });
-    SEED_STAFF.forEach(name=>{ const ref = db.collection('staff').doc(); batch.set(ref, { name, location:'CST' }); });
-    if(!locations.some(l=>l.name==='CST')) batch.set(db.collection('locations').doc(), { name:'CST' });
-    await batch.commit();
-    showToast('✓ CST starter data loaded');
-  }catch(err){ console.error(err); showToast('⚠ Could not load starter data — ' + err.message); }
-}
-
-// ============================================================
 // RENDER ORCHESTRATION
 // ============================================================
 function renderAll(){
@@ -1800,8 +1722,6 @@ function renderAll(){
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
-
-document.getElementById('btnSeedCST').addEventListener('click', seedCSTIfEmpty);
 
 // Explicit toolbar "add" buttons — visible on desktop too (unlike the mobile-only FAB),
 // and let you log a visit directly without opening a college first.
