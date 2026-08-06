@@ -76,21 +76,16 @@ document.getElementById('btnLogin').addEventListener('click', async ()=>{
 });
 
 // ---- Mapping: replan rows -> existing college doc IDs (from your CST directory) ----
-// New college (not previously in your directory):
-const NEW_COLLEGE_ID = 'c031';
-const NEW_COLLEGE = {
-  name: "Anjuman-I-Islam's Akbar Peerbhoy College",
-  address: 'Nagpada, Mumbai', pinCode: '400008', collegeType: 'Junior & Degree College',
-  tier: '', streams: '', contactPerson: '', contactNumber: '', contactEmail: '',
-  notes: '', location: 'CST',
-};
+// New college? No — AP College (c009) IS Akbar Peerbhoy College. The replan sheet listed it
+// twice under two different names ("Anjuman-I-Islam's Akbar Peerbhoy College" and "A.P. College
+// (Akbar Peerbhoy)") on two different dates — same physical college, not two separate ones.
 // Update to existing c009 "AP College" now that its real name/address is confirmed:
 const AP_COLLEGE_UPDATE = { name: 'A.P. College (Akbar Peerbhoy)', address: 'Nagpada, Mumbai', pinCode: '400008' };
 
 const VISITS = [
   { date:'2026-08-10', collegeId:'c001' },
   { date:'2026-08-10', collegeId:'c002' },
-  { date:'2026-08-10', collegeId:NEW_COLLEGE_ID },
+  { date:'2026-08-10', collegeId:'c009', notes:'Sheet listed this as "Anjuman-I-Islam\'s Akbar Peerbhoy College" — same college as AP College.' },
   { date:'2026-08-11', collegeId:'c009' },
   { date:'2026-08-11', collegeId:'c029' },
   { date:'2026-08-11', collegeId:'c005' },
@@ -134,10 +129,11 @@ document.getElementById('btnImport').addEventListener('click', async ()=>{
       ...NEW_COLLEGE, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: user.uid,
     });
 
-    log('Updating c009 (AP College) with confirmed name/address…');
-    batch.update(db.collection('colleges').doc('c009'), {
-      ...AP_COLLEGE_UPDATE, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid,
-    });
+    log('Adding/updating c009 (AP College) with confirmed name/address…');
+    batch.set(db.collection('colleges').doc('c009'), {
+      ...AP_COLLEGE_UPDATE, location: 'CST',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid,
+    }, { merge: true });
 
     log('Queuing ' + VISITS.length + ' visits (status: Scheduled, activity: Talk)…');
     const seenColleges = new Set();
