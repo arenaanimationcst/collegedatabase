@@ -313,6 +313,14 @@ input[type=file]{display:none;}
 .contact-row .cr-wa{background:#e6f7ee; color:#25955a;}
 .contact-row .cr-del{background:#fde8e8; color:var(--red-dark); border:none;}
 
+.plan-item .pi-person{font-size:11.5px; color:var(--gray-800); margin-top:4px; font-weight:600;}
+.plan-item .pi-notes{font-size:11.5px; color:var(--gray-600); margin-top:3px; background:var(--gray-100); border-radius:6px; padding:5px 8px;}
+
+.status-box{background:var(--gray-100); border-radius:8px; padding:10px;}
+.chip.rating{min-width:36px; text-align:center; font-weight:700;}
+.chip.rating.active{background:var(--yellow-dark); border-color:var(--yellow-dark); color:var(--gray-900);}
+.chip.cfu.active{background:var(--gray-800); border-color:var(--gray-800); color:#fff;}
+
 </style>
 </head>
 <body>
@@ -364,14 +372,14 @@ input[type=file]{display:none;}
 
 <!-- ===== TABS (desktop) ===== -->
 <nav class="tabs-desktop">
-  <button class="tab-btn active" data-view="colleges">Colleges</button>
+  <button class="tab-btn active" data-view="plan">Plan</button>
+  <button class="tab-btn" data-view="colleges">Colleges</button>
   <button class="tab-btn" data-view="visits">Visit Log</button>
-  <button class="tab-btn" data-view="plan">Plan</button>
 </nav>
 
 <main>
   <!-- ===================== COLLEGES VIEW ===================== -->
-  <div class="view active" id="view-colleges">
+  <div class="view" id="view-colleges">
     <div class="toolbar">
       <div class="toolbar-top-row">
         <input type="text" id="cSearch" placeholder="Search college, address, contact...">
@@ -412,30 +420,39 @@ input[type=file]{display:none;}
   </div>
 
   <!-- ===================== PLAN VIEW ("what's next") ===================== -->
-  <div class="view" id="view-plan">
-    <div class="plan-section">
-      <h3>Today</h3><div id="planToday" class="plan-list"></div>
+  <div class="view active" id="view-plan">
+    <div class="plan-section" id="planFilteredSection" style="display:none;">
+      <h3 style="display:flex; justify-content:space-between; align-items:center;">
+        <span id="planFilteredHeading">Visits on this date</span>
+        <button class="btn-light btn-sm" id="btnClearPlanFilter">← Full Plan</button>
+      </h3>
+      <div id="planFiltered" class="plan-list"></div>
     </div>
-    <div class="plan-section">
-      <h3>Tomorrow</h3><div id="planTomorrow" class="plan-list"></div>
-    </div>
-    <div class="plan-section">
-      <h3>This Week</h3><div id="planWeek" class="plan-list"></div>
-    </div>
-    <div class="plan-section">
-      <h3>Later</h3><div id="planLater" class="plan-list"></div>
-    </div>
-    <div class="plan-section">
-      <h3>Open Checklist Items</h3><div id="planChecklist" class="plan-list"></div>
+    <div id="planDefaultSections">
+      <div class="plan-section">
+        <h3>Today</h3><div id="planToday" class="plan-list"></div>
+      </div>
+      <div class="plan-section">
+        <h3>Tomorrow</h3><div id="planTomorrow" class="plan-list"></div>
+      </div>
+      <div class="plan-section">
+        <h3>This Week</h3><div id="planWeek" class="plan-list"></div>
+      </div>
+      <div class="plan-section">
+        <h3>Later</h3><div id="planLater" class="plan-list"></div>
+      </div>
+      <div class="plan-section">
+        <h3>Open Checklist Items</h3><div id="planChecklist" class="plan-list"></div>
+      </div>
     </div>
   </div>
 </main>
 
 <!-- ===== BOTTOM TAB BAR (mobile) ===== -->
 <nav class="tabs-mobile">
-  <button class="tab-btn-m active" data-view="colleges"><span class="ti">🏫</span><span>Colleges</span></button>
+  <button class="tab-btn-m active" data-view="plan"><span class="ti">📋</span><span>Plan</span></button>
+  <button class="tab-btn-m" data-view="colleges"><span class="ti">🏫</span><span>Colleges</span></button>
   <button class="tab-btn-m" data-view="visits"><span class="ti">🗓</span><span>Visits</span></button>
-  <button class="tab-btn-m" data-view="plan"><span class="ti">📋</span><span>Plan</span></button>
 </nav>
 
 <button class="fab" id="fab">+</button>
@@ -551,7 +568,38 @@ input[type=file]{display:none;}
           <div class="field"><label>Stream</label><input type="text" id="vStream"></div>
           <div class="field"><label>Activity Type</label><select id="vActivityType"><option>Seminar</option><option>Workshop</option><option>Event</option><option>Talk</option></select></div>
           <div class="field"><label>Status</label><select id="vStatus"><option>Scheduled</option><option>Done</option><option>Postponed</option><option>Cancelled</option></select></div>
-          <div class="field full"><label>Met With</label><select id="vMetContact"><option value="__none">No contact met</option></select></div>
+          <div class="field full"><label>Meeting With</label><select id="vMetContact"><option value="__other">Other (type below)</option></select></div>
+          <div class="field full" id="vMeetingOtherWrap"><label>Who did you meet?</label><input type="text" id="vMeetingOtherText" placeholder="e.g. Front office staff, or leave blank if no one was available"></div>
+
+          <div class="field full status-box" id="doneBox" style="display:none;">
+            <label>Outcome</label>
+            <textarea id="vOutcome" placeholder="How did the meeting go? Any follow-up needed?"></textarea>
+            <label style="margin-top:8px;">Rate the Meeting</label>
+            <div class="chip-select" id="vRatingChips">
+              <div class="chip rating" data-value="1">1</div><div class="chip rating" data-value="2">2</div>
+              <div class="chip rating" data-value="3">3</div><div class="chip rating" data-value="4">4</div>
+              <div class="chip rating" data-value="5">5</div>
+            </div>
+          </div>
+
+          <div class="field full status-box" id="postponedBox" style="display:none;">
+            <label>Reschedule To</label>
+            <input type="date" id="vPostponedToDate">
+            <div class="field-hint">If you pick a date, a new Scheduled visit is created automatically with the same details — this one stays marked Postponed as the record of what happened.</div>
+          </div>
+
+          <div class="field full status-box" id="cancelledBox" style="display:none;">
+            <label>Reason</label>
+            <textarea id="vCancelReason" placeholder="Why was this cancelled?"></textarea>
+            <label style="margin-top:8px;">Schedule a Follow-up?</label>
+            <div class="chip-select" id="vCancelFollowupChips">
+              <div class="chip cfu" data-value="no">No</div><div class="chip cfu" data-value="yes">Yes</div>
+            </div>
+            <div id="cancelFollowupDateWrap" style="display:none; margin-top:8px;">
+              <label>Follow-up Date</label>
+              <input type="date" id="vCancelFollowupDate">
+            </div>
+          </div>
 
           <div class="field full reminder-row">
             <label class="switch-label"><input type="checkbox" id="vReminderEnabled"><span>🔔 Set a reminder for this visit</span></label>
@@ -691,7 +739,8 @@ const secondaryAuth = secondaryApp.auth();
 let currentUser = null;       // { uid, email, name, role, location }
 let colleges = [], visits = [], staffList = [], locations = [], checklistItems = [], allUsers = [];
 let unsubColleges = null, unsubVisits = null, unsubStaff = null, unsubChecklist = null;
-let currentView = 'colleges';
+let currentView = 'plan';
+let planDateFilter = null;
 let selectedTierChip = '';
 let vStaffSelected = [];
 let calMonth, calYear, calSelectedDate = null;
@@ -899,7 +948,15 @@ function renderCalendar(){
     html += `<div class="cal-cell ${dateStr===today?'today':''} ${dateStr===calSelectedDate?'selected':''}" data-date="${dateStr}">${d}${hasVisits?'<span class="dot"></span>':''}</div>`;
   }
   grid.innerHTML = html;
-  grid.querySelectorAll('.cal-cell[data-date]').forEach(cell=> cell.addEventListener('click', ()=>{ calSelectedDate=cell.dataset.date; renderCalendar(); }));
+  grid.querySelectorAll('.cal-cell[data-date]').forEach(cell=> cell.addEventListener('click', ()=>{
+    calSelectedDate = cell.dataset.date;
+    renderCalendar();
+    // Jump straight to Plan tab filtered to this date — this is the main way to answer
+    // "what's happening on this date" instead of just previewing it inside the drawer.
+    closeDrawer();
+    switchView('plan');
+    showPlanDateFilter(calSelectedDate);
+  }));
   renderDayDetail();
 }
 function renderDayDetail(){
@@ -929,7 +986,10 @@ function switchView(view){
   document.getElementById('view-'+view).classList.add('active');
   renderAll();
 }
-document.querySelectorAll('.tab-btn, .tab-btn-m').forEach(btn=> btn.addEventListener('click', ()=> switchView(btn.dataset.view)));
+document.querySelectorAll('.tab-btn, .tab-btn-m').forEach(btn=> btn.addEventListener('click', ()=>{
+  if(btn.dataset.view === 'plan') planDateFilter = null; // direct tab tap always shows the default agenda, not a stuck date filter
+  switchView(btn.dataset.view);
+}));
 document.getElementById('fab').addEventListener('click', ()=>{
   if(currentView==='colleges') openCollegeModal(null);
   else if(currentView==='visits') openVisitModal(null);
@@ -1276,7 +1336,10 @@ function renderVisits(){
         <div class="vc-college" onclick="openDetailModal('${v.collegeId}')">${escapeHtml(c?c.name:'(deleted college)')}</div>
         <div class="vc-line">🕐 ${timeRangeDisplay(v) || '—'}</div>
         <div class="vc-line">👥 ${escapeHtml(v.staff||'—')}</div>
-        ${v.metContactName ? `<div class="vc-line">🤝 Met: ${escapeHtml(v.metContactName)}</div>` : ''}
+        ${v.metContactName ? `<div class="vc-line">🤝 Meeting: ${escapeHtml(v.metContactName)}</div>` : ''}
+        ${v.status==='Done' && (v.outcome||v.rating) ? `<div class="vc-line">✅ ${v.rating?('★'.repeat(v.rating)+'☆'.repeat(5-v.rating)+' '):''}${escapeHtml(v.outcome||'')}</div>` : ''}
+        ${v.status==='Postponed' && v.postponedToDate ? `<div class="vc-line">↻ Rescheduled to ${formatDateDisplay(v.postponedToDate)}</div>` : ''}
+        ${v.status==='Cancelled' && v.cancelReason ? `<div class="vc-line">✕ Reason: ${escapeHtml(v.cancelReason)}</div>` : ''}
         <div class="vc-meta">
           <span class="badge ${tierBadgeClass(c?c.tier:'')}">${c&&c.tier?c.tier:'Unassigned'}</span>
           <span class="badge badge-outline">${escapeHtml(v.activityType||'')}</span>
@@ -1312,9 +1375,15 @@ function populateMetContactSelect(collegeId, selectedContactId){
   const c = getCollege(collegeId);
   const contacts = (c && c.contacts) || [];
   const opts = contacts.map(ct=>`<option value="${ct.id}">${escapeHtml(ct.name)}${ct.designation?' — '+escapeHtml(ct.designation):''}${ct.wing?' ('+escapeHtml(ct.wing)+')':''}</option>`).join('');
-  sel.innerHTML = '<option value="__none">No contact met</option>' + opts;
-  sel.value = selectedContactId || '__none';
+  sel.innerHTML = opts + '<option value="__other">Other (type below)</option>';
+  sel.value = selectedContactId || '__other';
+  toggleMeetingOtherField();
 }
+function toggleMeetingOtherField(){
+  const isOther = document.getElementById('vMetContact').value === '__other';
+  document.getElementById('vMeetingOtherWrap').style.display = isOther ? 'block' : 'none';
+}
+document.getElementById('vMetContact').addEventListener('change', toggleMeetingOtherField);
 document.getElementById('vCollegeId').addEventListener('change', function(){ populateMetContactSelect(this.value); });
 function renderStaffChips(){
   const wrap = document.getElementById('vStaffChips');
@@ -1335,6 +1404,26 @@ document.getElementById('vReminderEnabled').addEventListener('change', function(
   document.querySelector('.reminder-row').classList.toggle('enabled', this.checked);
 });
 
+// Status-conditional boxes: Done -> outcome+rating, Postponed -> reschedule date, Cancelled -> reason+followup
+let vSelectedRating = 0;
+function toggleStatusBoxes(){
+  const status = document.getElementById('vStatus').value;
+  document.getElementById('doneBox').style.display = status==='Done' ? 'block' : 'none';
+  document.getElementById('postponedBox').style.display = status==='Postponed' ? 'block' : 'none';
+  document.getElementById('cancelledBox').style.display = status==='Cancelled' ? 'block' : 'none';
+}
+document.getElementById('vStatus').addEventListener('change', toggleStatusBoxes);
+function setRating(val){
+  vSelectedRating = val;
+  document.querySelectorAll('#vRatingChips .chip').forEach(c=> c.classList.toggle('active', Number(c.dataset.value)===val));
+}
+document.querySelectorAll('#vRatingChips .chip').forEach(chip=> chip.addEventListener('click', ()=> setRating(Number(chip.dataset.value))));
+function setCancelFollowup(val){
+  document.querySelectorAll('#vCancelFollowupChips .chip').forEach(c=> c.classList.toggle('active', c.dataset.value===val));
+  document.getElementById('cancelFollowupDateWrap').style.display = val==='yes' ? 'block' : 'none';
+}
+document.querySelectorAll('#vCancelFollowupChips .chip').forEach(chip=> chip.addEventListener('click', ()=> setCancelFollowup(chip.dataset.value)));
+
 function openVisitModal(id, presetCollegeId){
   const editing = !!id;
   document.getElementById('visitModalTitle').textContent = editing ? 'Edit Visit' : 'Log Visit';
@@ -1346,6 +1435,9 @@ function openVisitModal(id, presetCollegeId){
   document.querySelector('.reminder-row').classList.remove('enabled');
   document.getElementById('vReminderTime').value = '21:00';
   setReminderMode('dayBefore');
+  setRating(0);
+  setCancelFollowup('no');
+  toggleStatusBoxes();
   vStaffSelected = [];
   populateCollegeSelect(presetCollegeId||'');
   if(editing){
@@ -1360,8 +1452,16 @@ function openVisitModal(id, presetCollegeId){
     document.getElementById('vStream').value = v.stream||'';
     document.getElementById('vActivityType').value = v.activityType||'Seminar';
     document.getElementById('vStatus').value = v.status||'Scheduled';
+    toggleStatusBoxes();
+    document.getElementById('vOutcome').value = v.outcome||'';
+    setRating(v.rating||0);
+    document.getElementById('vPostponedToDate').value = v.postponedToDate||'';
+    document.getElementById('vCancelReason').value = v.cancelReason||'';
+    setCancelFollowup(v.cancelFollowupDate ? 'yes' : 'no');
+    document.getElementById('vCancelFollowupDate').value = v.cancelFollowupDate||'';
     document.getElementById('vNotes').value = v.notes||'';
     populateMetContactSelect(v.collegeId, v.metContactId);
+    if(!v.metContactId){ document.getElementById('vMeetingOtherText').value = v.metContactName || ''; }
     if(v.reminder && v.reminder.enabled){
       document.getElementById('vReminderEnabled').checked = true;
       document.querySelector('.reminder-row').classList.add('enabled');
@@ -1418,8 +1518,13 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
   if(!collegeId){ showToast('⚠ Please select a college'); return; }
   const c = getCollege(collegeId);
   const id = document.getElementById('vId').value;
-  const metContactId = document.getElementById('vMetContact').value;
-  const metContact = metContactId && metContactId !== '__none' ? (c.contacts||[]).find(ct=>ct.id===metContactId) : null;
+  const metSelectVal = document.getElementById('vMetContact').value;
+  const metContact = metSelectVal !== '__other' ? (c.contacts||[]).find(ct=>ct.id===metSelectVal) : null;
+  const metOtherText = document.getElementById('vMeetingOtherText').value.trim();
+  const status = document.getElementById('vStatus').value;
+  const postponedToDate = document.getElementById('vPostponedToDate').value;
+  const cancelFollowupYes = document.querySelector('#vCancelFollowupChips .chip.active')?.dataset.value === 'yes';
+  const cancelFollowupDate = cancelFollowupYes ? document.getElementById('vCancelFollowupDate').value : '';
   const record = {
     collegeId, location: c.location,
     date: document.getElementById('vDate').value,
@@ -1429,17 +1534,39 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
     classYear: document.getElementById('vClassYear').value.trim(),
     stream: document.getElementById('vStream').value.trim(),
     activityType: document.getElementById('vActivityType').value,
-    status: document.getElementById('vStatus').value,
+    status,
     notes: document.getElementById('vNotes').value.trim(),
     metContactId: metContact ? metContact.id : null,
-    metContactName: metContact ? metContact.name + (metContact.designation ? ' — ' + metContact.designation : '') : '',
+    metContactName: metContact ? metContact.name + (metContact.designation ? ' — ' + metContact.designation : '') : metOtherText,
+    outcome: status==='Done' ? document.getElementById('vOutcome').value.trim() : '',
+    rating: status==='Done' ? vSelectedRating : 0,
+    postponedToDate: status==='Postponed' ? postponedToDate : '',
+    cancelReason: status==='Cancelled' ? document.getElementById('vCancelReason').value.trim() : '',
+    cancelFollowupDate: status==='Cancelled' ? cancelFollowupDate : '',
     reminder: buildReminderPayload(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     updatedBy: currentUser.uid,
   };
+  // A postponed visit with a reschedule date, or a cancelled visit with a follow-up date,
+  // automatically spawns a new Scheduled visit with the same details — so the next meeting
+  // is already on the books instead of you having to re-type everything.
+  const followUpDate = status==='Postponed' ? postponedToDate : (status==='Cancelled' ? cancelFollowupDate : '');
   try{
     if(id){ await db.collection('visits').doc(id).update(record); notifiedIds.delete(id); saveNotified(); showToast('✓ Visit updated'); }
     else{ record.createdAt = firebase.firestore.FieldValue.serverTimestamp(); record.createdBy = currentUser.uid; await db.collection('visits').add(record); showToast('✓ Visit logged'); }
+    if(followUpDate){
+      const followUp = {
+        collegeId, location: c.location, date: followUpDate,
+        startTime: '', endTime: '', staff: record.staff, classYear: record.classYear, stream: record.stream,
+        activityType: record.activityType, status: 'Scheduled',
+        notes: `Follow-up after ${status.toLowerCase()} visit on ${record.date}.`,
+        metContactId: null, metContactName: '', outcome:'', rating:0, postponedToDate:'', cancelReason:'', cancelFollowupDate:'',
+        reminder: { enabled:false },
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid,
+      };
+      await db.collection('visits').add(followUp);
+      showToast('✓ Follow-up visit scheduled for ' + formatDateDisplay(followUpDate));
+    }
     closeVisitModal();
   }catch(err){ console.error(err); showToast('⚠ Could not save — ' + err.message); }
 });
@@ -1459,7 +1586,44 @@ async function deleteVisit(id){
 // ============================================================
 // PLAN VIEW ("what's next")
 // ============================================================
+function planItemHtml(v){
+  const c = getCollege(v.collegeId);
+  return `<div class="plan-item" onclick="openVisitModal('${v.id}')">
+    <div class="pi-main">
+      <div class="pi-college">${escapeHtml(c?c.name:'')}</div>
+      <div class="pi-meta">${formatDateDisplay(v.date)} · ${timeRangeDisplay(v)||'time not set'} · ${escapeHtml(v.activityType||'')} · ${escapeHtml(v.status||'')}</div>
+      ${v.metContactName?`<div class="pi-person">🤝 ${escapeHtml(v.metContactName)}</div>`:''}
+      ${v.notes?`<div class="pi-notes">${escapeHtml(v.notes)}</div>`:''}
+    </div>
+    ${v.reminder&&v.reminder.enabled?'<span>🔔</span>':''}
+  </div>`;
+}
+function showPlanDateFilter(dateStr){
+  planDateFilter = dateStr;
+  renderPlan();
+}
+function clearPlanDateFilter(){
+  planDateFilter = null;
+  renderPlan();
+}
+document.getElementById('btnClearPlanFilter').addEventListener('click', clearPlanDateFilter);
+
 function renderPlan(){
+  const filteredSection = document.getElementById('planFilteredSection');
+  const defaultSections = document.getElementById('planDefaultSections');
+
+  if(planDateFilter){
+    filteredSection.style.display = 'block';
+    defaultSections.style.display = 'none';
+    document.getElementById('planFilteredHeading').textContent = 'Visits on ' + formatDateDisplay(planDateFilter);
+    const dayItems = visits.filter(v=>v.date===planDateFilter).sort((a,b)=> (a.startTime||'').localeCompare(b.startTime||''));
+    const el = document.getElementById('planFiltered');
+    el.innerHTML = dayItems.length===0 ? '<div class="plan-empty">No visits on this date.</div>' : dayItems.map(planItemHtml).join('');
+    return;
+  }
+  filteredSection.style.display = 'none';
+  defaultSections.style.display = 'block';
+
   const today = todayStr(), tomorrow = tomorrowStr();
   const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate()+7);
   const weekEndStr = weekEnd.toISOString().slice(0,10);
@@ -1474,14 +1638,7 @@ function renderPlan(){
   });
   const renderBucket = (elId, items) => {
     const el = document.getElementById(elId);
-    if(items.length===0){ el.innerHTML = '<div class="plan-empty">Nothing scheduled.</div>'; return; }
-    el.innerHTML = items.map(v=>{
-      const c = getCollege(v.collegeId);
-      return `<div class="plan-item" onclick="openVisitModal('${v.id}')">
-        <div class="pi-main"><div class="pi-college">${escapeHtml(c?c.name:'')}</div><div class="pi-meta">${formatDateDisplay(v.date)} · ${timeRangeDisplay(v)} · ${escapeHtml(v.activityType||'')}</div></div>
-        ${v.reminder&&v.reminder.enabled?'<span>🔔</span>':''}
-      </div>`;
-    }).join('');
+    el.innerHTML = items.length===0 ? '<div class="plan-empty">Nothing scheduled.</div>' : items.map(planItemHtml).join('');
   };
   renderBucket('planToday', buckets.today);
   renderBucket('planTomorrow', buckets.tomorrow);
@@ -1588,11 +1745,13 @@ document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
       'Date': formatDateDisplay(v.date), 'Day': dayFromDate(v.date), 'Start': formatTime12(v.startTime), 'End': formatTime12(v.endTime),
       'Location': c.location||'', 'College': c.name||'', 'Address': c.address||'', 'Pin Code': c.pinCode||'',
       'Tier': c.tier||'', 'Type': c.collegeType||'', 'Concerned Person': c.contactPerson||'', 'Contact Number': c.contactNumber||'',
-      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'', 'Met With': v.metContactName || 'No contact met', 'Activity': v.activityType||'', 'Status': v.status||'', 'Notes': v.notes||'',
+      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'', 'Meeting With': v.metContactName || '', 'Activity': v.activityType||'', 'Status': v.status||'',
+      'Outcome': v.outcome||'', 'Rating (/5)': v.rating||'', 'Rescheduled To': v.postponedToDate ? formatDateDisplay(v.postponedToDate) : '',
+      'Cancel Reason': v.cancelReason||'', 'Follow-up Date': v.cancelFollowupDate ? formatDateDisplay(v.cancelFollowupDate) : '', 'Notes': v.notes||'',
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:24},{wch:12},{wch:11},{wch:30}];
+  ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:24},{wch:11},{wch:34},{wch:10},{wch:14},{wch:30},{wch:14},{wch:30}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Visits');
   const locSuffix = locFilter ? '-' + locFilter.toLowerCase().replace(/\s+/g,'') : '-all-locations';
@@ -1732,7 +1891,21 @@ function checkReminders(){
     const fireAt = new Date(v.reminder.datetime);
     if(now >= fireAt && now.getTime() - fireAt.getTime() < 12*3600*1000){ // don't fire stale reminders more than 12h late
       const c = getCollege(v.collegeId);
-      try{ new Notification('Upcoming visit: ' + (c?c.name:'College'), { body: `${formatDateDisplay(v.date)} · ${timeRangeDisplay(v)} · ${v.activityType||'Visit'}` }); }catch(e){}
+      const title = 'Upcoming visit: ' + (c?c.name:'College');
+      const body = `${formatDateDisplay(v.date)} · ${timeRangeDisplay(v)} · ${v.activityType||'Visit'}${v.metContactName?' · Meeting: '+v.metContactName:''}`;
+      // Fire through the service worker (registration.showNotification) rather than the page-level
+      // Notification() constructor — this is what actually lands in the phone's pull-down notification
+      // tray on both Android Chrome and an installed iOS PWA, instead of only showing while the tab is
+      // literally in the foreground.
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.ready.then(reg=>{
+          reg.showNotification(title, { body, icon:'icons/icon-192.png', badge:'icons/icon-192.png' }).catch(()=>{
+            try{ new Notification(title, { body }); }catch(e){}
+          });
+        });
+      }else{
+        try{ new Notification(title, { body }); }catch(e){}
+      }
       notifiedIds.add(v.id); saveNotified();
     }
   });
