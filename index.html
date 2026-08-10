@@ -1374,8 +1374,18 @@ function populateMetContactSelect(collegeId, selectedContactId){
   const sel = document.getElementById('vMetContact');
   const c = getCollege(collegeId);
   const contacts = (c && c.contacts) || [];
-  const opts = contacts.map(ct=>`<option value="${ct.id}">${escapeHtml(ct.name)}${ct.designation?' — '+escapeHtml(ct.designation):''}${ct.wing?' ('+escapeHtml(ct.wing)+')':''}</option>`).join('');
-  sel.innerHTML = opts + '<option value="__other">Other (type below)</option>';
+  let opts = '';
+  // Fold in the legacy single "Concerned Person" field as a selectable option too, so
+  // colleges that only have that (not yet added to the newer Contacts list) still work here.
+  if(c && c.contactPerson){
+    opts += `<option value="__primary">${escapeHtml(c.contactPerson)}${c.contactNumber?' — '+escapeHtml(c.contactNumber):''} (Primary Contact)</option>`;
+  }
+  opts += contacts.map(ct=>`<option value="${ct.id}">${escapeHtml(ct.name)}${ct.designation?' — '+escapeHtml(ct.designation):''}${ct.wing?' ('+escapeHtml(ct.wing)+')':''}</option>`).join('');
+  if(!opts){
+    sel.innerHTML = '<option value="__other" disabled>— No saved contacts for this college yet —</option><option value="__other" selected>Other (type below)</option>';
+  }else{
+    sel.innerHTML = opts + '<option value="__other">Other (type below)</option>';
+  }
   sel.value = selectedContactId || '__other';
   toggleMeetingOtherField();
 }
@@ -1460,8 +1470,8 @@ function openVisitModal(id, presetCollegeId){
     setCancelFollowup(v.cancelFollowupDate ? 'yes' : 'no');
     document.getElementById('vCancelFollowupDate').value = v.cancelFollowupDate||'';
     document.getElementById('vNotes').value = v.notes||'';
-    populateMetContactSelect(v.collegeId, v.metContactId);
-    if(!v.metContactId){ document.getElementById('vMeetingOtherText').value = v.metContactName || ''; }
+    populateMetContactSelect(v.collegeId, v.metContactId || (v.metContactName && v.metContactName.includes('(Primary Contact)') ? '__primary' : null));
+    if(!v.metContactId && !(v.metContactName||'').includes('(Primary Contact)')){ document.getElementById('vMeetingOtherText').value = v.metContactName || ''; }
     if(v.reminder && v.reminder.enabled){
       document.getElementById('vReminderEnabled').checked = true;
       document.querySelector('.reminder-row').classList.add('enabled');
@@ -1519,8 +1529,16 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
   const c = getCollege(collegeId);
   const id = document.getElementById('vId').value;
   const metSelectVal = document.getElementById('vMetContact').value;
-  const metContact = metSelectVal !== '__other' ? (c.contacts||[]).find(ct=>ct.id===metSelectVal) : null;
-  const metOtherText = document.getElementById('vMeetingOtherText').value.trim();
+  let metContactId = null, metContactName = '';
+  if(metSelectVal === '__primary'){
+    metContactId = null;
+    metContactName = c.contactPerson + (c.contactNumber ? ' — ' + c.contactNumber : '') + ' (Primary Contact)';
+  }else if(metSelectVal !== '__other'){
+    const metContact = (c.contacts||[]).find(ct=>ct.id===metSelectVal);
+    if(metContact){ metContactId = metContact.id; metContactName = metContact.name + (metContact.designation ? ' — ' + metContact.designation : ''); }
+  }else{
+    metContactName = document.getElementById('vMeetingOtherText').value.trim();
+  }
   const status = document.getElementById('vStatus').value;
   const postponedToDate = document.getElementById('vPostponedToDate').value;
   const cancelFollowupYes = document.querySelector('#vCancelFollowupChips .chip.active')?.dataset.value === 'yes';
@@ -1536,8 +1554,8 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
     activityType: document.getElementById('vActivityType').value,
     status,
     notes: document.getElementById('vNotes').value.trim(),
-    metContactId: metContact ? metContact.id : null,
-    metContactName: metContact ? metContact.name + (metContact.designation ? ' — ' + metContact.designation : '') : metOtherText,
+    metContactId: metContactId,
+    metContactName: metContactName,
     outcome: status==='Done' ? document.getElementById('vOutcome').value.trim() : '',
     rating: status==='Done' ? vSelectedRating : 0,
     postponedToDate: status==='Postponed' ? postponedToDate : '',
