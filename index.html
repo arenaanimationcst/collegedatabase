@@ -709,6 +709,9 @@ input[type=file]{display:none;}
         <div class="field"><label>From</label><input type="date" id="excelFrom"></div>
         <div class="field"><label>To</label><input type="date" id="excelTo"></div>
         <div class="field full" id="excelLocationField" style="display:none;"><label>Location</label><select id="excelLocation"><option value="">All Locations</option></select></div>
+        <div class="field full" id="excelPhoneField" style="display:none;">
+          <label class="switch-label"><input type="checkbox" id="excelIncludePhones"> <span>📱 Include phone numbers (Master Admin only)</span></label>
+        </div>
       </div>
       <div class="field-hint" style="margin-top:8px;">Defaults to the current week (Mon–Sun).</div>
     </div>
@@ -933,6 +936,7 @@ function initCalendar(){ const now=new Date(); calMonth=now.getMonth(); calYear=
 document.getElementById('calPrev').addEventListener('click', ()=>{ calMonth--; if(calMonth<0){calMonth=11; calYear--;} renderCalendar(); });
 document.getElementById('calNext').addEventListener('click', ()=>{ calMonth++; if(calMonth>11){calMonth=0; calYear++;} renderCalendar(); });
 function visitsOnDate(dateStr){ return visits.filter(v=>v.date===dateStr); }
+function hasPendingVisit(dateStr){ return visits.some(v=>v.date===dateStr && v.status==='Scheduled'); }
 function renderCalendar(){
   const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('calMonthLabel').textContent = monthNames[calMonth]+' '+calYear;
@@ -944,7 +948,9 @@ function renderCalendar(){
   const today = todayStr();
   for(let d=1; d<=daysInMonth; d++){
     const dateStr = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    const hasVisits = visitsOnDate(dateStr).length>0;
+    // Dot only shows for a date with a still-pending (Scheduled) visit — once it's Done,
+    // Postponed, or Cancelled, the dot clears since there's nothing left to act on there.
+    const hasVisits = hasPendingVisit(dateStr);
     html += `<div class="cal-cell ${dateStr===today?'today':''} ${dateStr===calSelectedDate?'selected':''}" data-date="${dateStr}">${d}${hasVisits?'<span class="dot"></span>':''}</div>`;
   }
   grid.innerHTML = html;
@@ -1745,6 +1751,15 @@ document.getElementById('btnExportExcel').addEventListener('click', ()=>{
   }else{
     locField.style.display = 'none';
   }
+  const phoneField = document.getElementById('excelPhoneField');
+  const phoneCheckbox = document.getElementById('excelIncludePhones');
+  if(currentUser.isMaster){
+    phoneField.style.display = 'block';
+    phoneCheckbox.checked = false; // off by default even for master — has to be a deliberate choice each time
+  }else{
+    phoneField.style.display = 'none';
+    phoneCheckbox.checked = false;
+  }
   excelOverlay.classList.add('open');
 });
 document.getElementById('btnCloseExcelModal').addEventListener('click', ()=> excelOverlay.classList.remove('open'));
@@ -1753,28 +1768,38 @@ excelOverlay.addEventListener('click', e=>{ if(e.target===excelOverlay) excelOve
 document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
   const from = document.getElementById('excelFrom').value, to = document.getElementById('excelTo').value;
   const locFilter = currentUser.role === 'admin' ? document.getElementById('excelLocation').value : currentUser.location;
+  // Only the Master Admin ever gets the option to include phone numbers at all — everyone else's
+  // export always has them stripped out, no matter what.
+  const includePhones = !!(currentUser.isMaster && document.getElementById('excelIncludePhones').checked);
   if(!from||!to){ showToast('⚠ Pick both dates'); return; }
   let filtered = visits.filter(v=> v.date>=from && v.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
   if(locFilter) filtered = filtered.filter(v=> v.location === locFilter);
   if(filtered.length===0){ showToast('No visits in that range/location'); return; }
+  const redactPhone = (str) => (str||'').replace(/\d{10}/g, '[hidden]');
   const rows = filtered.map(v=>{
     const c = getCollege(v.collegeId) || {};
-    return {
+    const row = {
       'Date': formatDateDisplay(v.date), 'Day': dayFromDate(v.date), 'Start': formatTime12(v.startTime), 'End': formatTime12(v.endTime),
       'Location': c.location||'', 'College': c.name||'', 'Address': c.address||'', 'Pin Code': c.pinCode||'',
-      'Tier': c.tier||'', 'Type': c.collegeType||'', 'Concerned Person': c.contactPerson||'', 'Contact Number': c.contactNumber||'',
-      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'', 'Meeting With': v.metContactName || '', 'Activity': v.activityType||'', 'Status': v.status||'',
+      'Tier': c.tier||'', 'Type': c.collegeType||'', 'Concerned Person': c.contactPerson||'',
+      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'',
+      'Meeting With': includePhones ? (v.metContactName||'') : redactPhone(v.metContactName),
+      'Activity': v.activityType||'', 'Status': v.status||'',
       'Outcome': v.outcome||'', 'Rating (/5)': v.rating||'', 'Rescheduled To': v.postponedToDate ? formatDateDisplay(v.postponedToDate) : '',
       'Cancel Reason': v.cancelReason||'', 'Follow-up Date': v.cancelFollowupDate ? formatDateDisplay(v.cancelFollowupDate) : '', 'Notes': v.notes||'',
     };
+    if(includePhones) row['Contact Number'] = c.contactNumber||'';
+    return row;
   });
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:24},{wch:11},{wch:34},{wch:10},{wch:14},{wch:30},{wch:14},{wch:30}];
+  const colWidths = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:34},{wch:11},{wch:10},{wch:14},{wch:30},{wch:14},{wch:30}];
+  if(includePhones) colWidths.push({wch:16});
+  ws['!cols'] = colWidths;
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Visits');
   const locSuffix = locFilter ? '-' + locFilter.toLowerCase().replace(/\s+/g,'') : '-all-locations';
   XLSX.writeFile(wb, `arena-weekly-report${locSuffix}-${from}-to-${to}.xlsx`);
-  excelOverlay.classList.remove('open'); showToast('✓ Excel report downloaded');
+  excelOverlay.classList.remove('open'); showToast('✓ Excel report downloaded' + (includePhones ? ' (with phone numbers)' : ''));
 });
 
 // ============================================================
