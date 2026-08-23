@@ -317,6 +317,9 @@ input[type=file]{display:none;}
 .plan-item .pi-notes{font-size:11.5px; color:var(--gray-600); margin-top:3px; background:var(--gray-100); border-radius:6px; padding:5px 8px;}
 
 .status-box{background:var(--gray-100); border-radius:8px; padding:10px;}
+.meeting-discussion-box{background:var(--gray-100); border-radius:8px; padding:9px 11px; margin-bottom:8px;}
+.meeting-discussion-box .mdb-name{font-weight:700; font-size:12.5px; margin-bottom:6px;}
+.meeting-discussion-box textarea{width:100%; padding:8px; border-radius:6px; border:1px solid var(--gray-200); background:#fff; font-family:inherit; font-size:13px; min-height:46px; resize:vertical;}
 .chip.rating{min-width:36px; text-align:center; font-weight:700;}
 .chip.rating.active{background:var(--yellow-dark); border-color:var(--yellow-dark); color:var(--gray-900);}
 .chip.cfu.active{background:var(--gray-800); border-color:var(--gray-800); color:#fff;}
@@ -519,12 +522,18 @@ input[type=file]{display:none;}
               <option>Principal</option><option>Vice Principal</option><option>HOD</option><option>Staff</option><option>Faculty</option><option>Other</option>
             </select>
           </div>
+          <div class="field full" id="newContactDesigOtherWrap" style="display:none;"><label>Specify Designation</label><input type="text" id="newContactDesigOther" placeholder="e.g. Sports Coordinator"></div>
           <div class="field"><label>Wing</label>
             <select id="newContactWing">
-              <option value="">Not specified</option><option>Junior College</option><option>Degree College</option>
+              <option value="">Not specified</option><option>Junior College</option><option>Degree College</option><option>Both (JR/DEG)</option>
             </select>
           </div>
-          <div class="field"><label>Section</label><input type="text" id="newContactSection" placeholder="e.g. Commerce, Arts, BMM"></div>
+          <div class="field"><label>Section</label>
+            <select id="newContactSection">
+              <option value="">Not specified</option><option>Commerce</option><option>Arts</option><option>Science</option><option>BMM</option><option>IT</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field full" id="newContactSectionOtherWrap" style="display:none;"><label>Specify Section</label><input type="text" id="newContactSectionOther" placeholder="e.g. BMS, BAF, Mass Media"></div>
           <div class="field full"><label>Phone</label><input type="tel" id="newContactPhone" placeholder="10-digit mobile"></div>
         </div>
         <button class="btn-primary btn-sm" id="btnAddContact" style="margin-top:8px;">+ Add Contact</button>
@@ -568,8 +577,15 @@ input[type=file]{display:none;}
           <div class="field"><label>Stream</label><input type="text" id="vStream"></div>
           <div class="field"><label>Activity Type</label><select id="vActivityType"><option>Seminar</option><option>Workshop</option><option>Event</option><option>Talk</option></select></div>
           <div class="field"><label>Status</label><select id="vStatus"><option>Scheduled</option><option>Done</option><option>Postponed</option><option>Cancelled</option></select></div>
-          <div class="field full"><label>Meeting With</label><select id="vMetContact"><option value="__other">Other (type below)</option></select></div>
-          <div class="field full" id="vMeetingOtherWrap"><label>Who did you meet?</label><input type="text" id="vMeetingOtherText" placeholder="e.g. Front office staff, or leave blank if no one was available"></div>
+          <div class="field full">
+            <label>Meeting With (select everyone you spoke to)</label>
+            <div class="chip-select" id="vMeetingChips"></div>
+            <div class="add-staff-row" style="margin-top:8px;">
+              <input type="text" id="vAdHocMeetingName" placeholder="Someone not listed? Type a name">
+              <button type="button" class="btn-light btn-sm" id="btnAddAdHocMeeting">+ Add</button>
+            </div>
+            <div id="vMeetingDiscussions" style="margin-top:10px;"></div>
+          </div>
 
           <div class="field full status-box" id="doneBox" style="display:none;">
             <label>Outcome</label>
@@ -893,6 +909,19 @@ function collegeChecklist(id){ return checklistItems.filter(i=>i.collegeId===id)
 function tierBadgeClass(t){ if(t==='Tier 1') return 'badge-tier1'; if(t==='Tier 2') return 'badge-tier2'; if(t==='Tier 3') return 'badge-tier3'; return 'badge-tierx'; }
 function statusBadgeClass(s){ switch(s){ case 'Done': return 'badge-done'; case 'Scheduled': return 'badge-scheduled'; case 'Postponed': return 'badge-postponed'; case 'Cancelled': return 'badge-cancelled'; default: return 'badge-outline'; } }
 function escapeHtml(str){ return String(str ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+function meetingsHtmlLines(v){
+  if(Array.isArray(v.meetings) && v.meetings.length>0){
+    return v.meetings.map(m=> `🤝 ${escapeHtml(m.name)}${m.discussion?': '+escapeHtml(m.discussion):''}`).join('<br>');
+  }
+  return v.metContactName ? '🤝 ' + escapeHtml(v.metContactName) : '';
+}
+function meetingsPlainText(v, includePhones){
+  const redact = s => includePhones ? s : (s||'').replace(/\d{10}/g,'[hidden]');
+  if(Array.isArray(v.meetings) && v.meetings.length>0){
+    return v.meetings.map(m=> redact(m.name) + (m.discussion?' ('+m.discussion+')':'')).join('; ');
+  }
+  return redact(v.metContactName||'');
+}
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function tomorrowStr(){ const d=new Date(); d.setDate(d.getDate()+1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dialablePhone(num){ return (num||'').replace(/[^\d+]/g,''); }
@@ -1244,16 +1273,26 @@ function renderContacts(c){
       </div>
     </div>`).join('');
 }
+document.getElementById('newContactDesignation').addEventListener('change', function(){
+  document.getElementById('newContactDesigOtherWrap').style.display = this.value === 'Other' ? 'block' : 'none';
+});
+document.getElementById('newContactSection').addEventListener('change', function(){
+  document.getElementById('newContactSectionOtherWrap').style.display = this.value === 'Other' ? 'block' : 'none';
+});
 document.getElementById('btnAddContact').addEventListener('click', async ()=>{
   if(!detailCollegeId) return;
   const name = document.getElementById('newContactName').value.trim();
   if(!name){ showToast('⚠ Enter a name'); return; }
+  const desigSelect = document.getElementById('newContactDesignation').value;
+  const designation = desigSelect === 'Other' ? (document.getElementById('newContactDesigOther').value.trim() || 'Other') : desigSelect;
+  const sectionSelect = document.getElementById('newContactSection').value;
+  const section = sectionSelect === 'Other' ? document.getElementById('newContactSectionOther').value.trim() : sectionSelect;
   const contact = {
     id: uid('ct'),
     name,
-    designation: document.getElementById('newContactDesignation').value,
+    designation,
     wing: document.getElementById('newContactWing').value,
-    section: document.getElementById('newContactSection').value.trim(),
+    section,
     phone: document.getElementById('newContactPhone').value.trim(),
   };
   const c = getCollege(detailCollegeId);
@@ -1262,8 +1301,12 @@ document.getElementById('btnAddContact').addEventListener('click', async ()=>{
     await db.collection('colleges').doc(detailCollegeId).update({ contacts, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: currentUser.uid });
     document.getElementById('newContactName').value = '';
     document.getElementById('newContactSection').value = '';
+    document.getElementById('newContactSectionOther').value = '';
+    document.getElementById('newContactSectionOtherWrap').style.display = 'none';
     document.getElementById('newContactPhone').value = '';
     document.getElementById('newContactDesignation').value = 'Principal';
+    document.getElementById('newContactDesigOther').value = '';
+    document.getElementById('newContactDesigOtherWrap').style.display = 'none';
     document.getElementById('newContactWing').value = '';
     showToast('✓ Contact added');
   }catch(err){ showToast('⚠ ' + err.message); }
@@ -1342,7 +1385,7 @@ function renderVisits(){
         <div class="vc-college" onclick="openDetailModal('${v.collegeId}')">${escapeHtml(c?c.name:'(deleted college)')}</div>
         <div class="vc-line">🕐 ${timeRangeDisplay(v) || '—'}</div>
         <div class="vc-line">👥 ${escapeHtml(v.staff||'—')}</div>
-        ${v.metContactName ? `<div class="vc-line">🤝 Meeting: ${escapeHtml(v.metContactName)}</div>` : ''}
+        ${meetingsHtmlLines(v) ? `<div class="vc-line">${meetingsHtmlLines(v)}</div>` : ''}
         ${v.status==='Done' && (v.outcome||v.rating) ? `<div class="vc-line">✅ ${v.rating?('★'.repeat(v.rating)+'☆'.repeat(5-v.rating)+' '):''}${escapeHtml(v.outcome||'')}</div>` : ''}
         ${v.status==='Postponed' && v.postponedToDate ? `<div class="vc-line">↻ Rescheduled to ${formatDateDisplay(v.postponedToDate)}</div>` : ''}
         ${v.status==='Cancelled' && v.cancelReason ? `<div class="vc-line">✕ Reason: ${escapeHtml(v.cancelReason)}</div>` : ''}
@@ -1374,33 +1417,61 @@ function populateCollegeSelect(selectedId){
   const sorted = [...colleges].sort((a,b)=>a.name.localeCompare(b.name));
   sel.innerHTML = '<option value="">Select a college…</option>' + sorted.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${currentUser.role==='admin'?' — '+escapeHtml(c.location||''):''}</option>`).join('');
   if(selectedId) sel.value = selectedId;
-  populateMetContactSelect(selectedId||'');
+  renderMeetingChips(selectedId||'');
 }
-function populateMetContactSelect(collegeId, selectedContactId){
-  const sel = document.getElementById('vMetContact');
+
+// ---- Meeting With: multi-select people, each with their own discussion notes ----
+let vMeetingsSelected = []; // [{ id, name, discussion }]
+function availableMeetingPeople(collegeId){
   const c = getCollege(collegeId);
-  const contacts = (c && c.contacts) || [];
-  let opts = '';
-  // Fold in the legacy single "Concerned Person" field as a selectable option too, so
-  // colleges that only have that (not yet added to the newer Contacts list) still work here.
-  if(c && c.contactPerson){
-    opts += `<option value="__primary">${escapeHtml(c.contactPerson)}${c.contactNumber?' — '+escapeHtml(c.contactNumber):''} (Primary Contact)</option>`;
-  }
-  opts += contacts.map(ct=>`<option value="${ct.id}">${escapeHtml(ct.name)}${ct.designation?' — '+escapeHtml(ct.designation):''}${ct.wing?' ('+escapeHtml(ct.wing)+')':''}</option>`).join('');
-  if(!opts){
-    sel.innerHTML = '<option value="__other" disabled>— No saved contacts for this college yet —</option><option value="__other" selected>Other (type below)</option>';
+  if(!c) return [];
+  const people = [];
+  if(c.contactPerson) people.push({ id:'__primary', name: c.contactPerson + (c.contactNumber ? ' — ' + c.contactNumber : '') + ' (Primary Contact)' });
+  (c.contacts||[]).forEach(ct=> people.push({ id: ct.id, name: ct.name + (ct.designation?' — '+ct.designation:'') + (ct.wing?' ('+ct.wing+')':'') }));
+  return people;
+}
+function renderMeetingChips(collegeId){
+  const wrap = document.getElementById('vMeetingChips');
+  const people = availableMeetingPeople(collegeId);
+  if(people.length===0){
+    wrap.innerHTML = '<div class="field-hint">No saved contacts for this college yet — use "Add" below to type a name.</div>';
   }else{
-    sel.innerHTML = opts + '<option value="__other">Other (type below)</option>';
+    wrap.innerHTML = people.map(p=>{
+      const active = vMeetingsSelected.some(m=>m.id===p.id);
+      return `<div class="chip ${active?'active':''}" data-id="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>`;
+    }).join('');
   }
-  sel.value = selectedContactId || '__other';
-  toggleMeetingOtherField();
+  wrap.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const id = chip.dataset.id, name = chip.dataset.name;
+      if(vMeetingsSelected.some(m=>m.id===id)){ vMeetingsSelected = vMeetingsSelected.filter(m=>m.id!==id); }
+      else{ vMeetingsSelected.push({ id, name, discussion:'' }); }
+      renderMeetingChips(collegeId);
+      renderMeetingDiscussions();
+    });
+  });
 }
-function toggleMeetingOtherField(){
-  const isOther = document.getElementById('vMetContact').value === '__other';
-  document.getElementById('vMeetingOtherWrap').style.display = isOther ? 'block' : 'none';
+document.getElementById('btnAddAdHocMeeting').addEventListener('click', ()=>{
+  const input = document.getElementById('vAdHocMeetingName');
+  const name = input.value.trim();
+  if(!name) return;
+  vMeetingsSelected.push({ id: uid('adhoc'), name, discussion:'' });
+  input.value = '';
+  renderMeetingDiscussions();
+});
+function renderMeetingDiscussions(){
+  const wrap = document.getElementById('vMeetingDiscussions');
+  if(vMeetingsSelected.length===0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = vMeetingsSelected.map((m,idx)=>`
+    <div class="meeting-discussion-box">
+      <div class="mdb-name">🤝 ${escapeHtml(m.name)}</div>
+      <textarea placeholder="What did you discuss with them?" data-idx="${idx}">${escapeHtml(m.discussion||'')}</textarea>
+    </div>`).join('');
+  wrap.querySelectorAll('textarea').forEach(ta=>{
+    ta.addEventListener('input', function(){ vMeetingsSelected[Number(this.dataset.idx)].discussion = this.value; });
+  });
 }
-document.getElementById('vMetContact').addEventListener('change', toggleMeetingOtherField);
-document.getElementById('vCollegeId').addEventListener('change', function(){ populateMetContactSelect(this.value); });
+document.getElementById('vCollegeId').addEventListener('change', function(){ vMeetingsSelected = []; renderMeetingChips(this.value); renderMeetingDiscussions(); });
 function renderStaffChips(){
   const wrap = document.getElementById('vStaffChips');
   wrap.innerHTML = staffList.map(s=>`<div class="chip ${vStaffSelected.includes(s.name)?'active':''}" data-name="${escapeHtml(s.name)}">${escapeHtml(s.name)}</div>`).join('') || '<div class="field-hint">No staff added yet — add some in ⚙ Settings.</div>';
@@ -1455,6 +1526,7 @@ function openVisitModal(id, presetCollegeId){
   setCancelFollowup('no');
   toggleStatusBoxes();
   vStaffSelected = [];
+  vMeetingsSelected = [];
   populateCollegeSelect(presetCollegeId||'');
   if(editing){
     const v = visits.find(v=>v.id===id);
@@ -1476,8 +1548,14 @@ function openVisitModal(id, presetCollegeId){
     setCancelFollowup(v.cancelFollowupDate ? 'yes' : 'no');
     document.getElementById('vCancelFollowupDate').value = v.cancelFollowupDate||'';
     document.getElementById('vNotes').value = v.notes||'';
-    populateMetContactSelect(v.collegeId, v.metContactId || (v.metContactName && v.metContactName.includes('(Primary Contact)') ? '__primary' : null));
-    if(!v.metContactId && !(v.metContactName||'').includes('(Primary Contact)')){ document.getElementById('vMeetingOtherText').value = v.metContactName || ''; }
+    // Load meetings: new-format array if present, else fall back to the old single metContactName field.
+    if(Array.isArray(v.meetings) && v.meetings.length>0){
+      vMeetingsSelected = v.meetings.map(m=>({ id:m.id||uid('adhoc'), name:m.name||'', discussion:m.discussion||'' }));
+    }else if(v.metContactName){
+      vMeetingsSelected = [{ id: v.metContactId || uid('adhoc'), name: v.metContactName, discussion: '' }];
+    }
+    renderMeetingChips(v.collegeId);
+    renderMeetingDiscussions();
     if(v.reminder && v.reminder.enabled){
       document.getElementById('vReminderEnabled').checked = true;
       document.querySelector('.reminder-row').classList.add('enabled');
@@ -1534,17 +1612,9 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
   if(!collegeId){ showToast('⚠ Please select a college'); return; }
   const c = getCollege(collegeId);
   const id = document.getElementById('vId').value;
-  const metSelectVal = document.getElementById('vMetContact').value;
-  let metContactId = null, metContactName = '';
-  if(metSelectVal === '__primary'){
-    metContactId = null;
-    metContactName = c.contactPerson + (c.contactNumber ? ' — ' + c.contactNumber : '') + ' (Primary Contact)';
-  }else if(metSelectVal !== '__other'){
-    const metContact = (c.contacts||[]).find(ct=>ct.id===metSelectVal);
-    if(metContact){ metContactId = metContact.id; metContactName = metContact.name + (metContact.designation ? ' — ' + metContact.designation : ''); }
-  }else{
-    metContactName = document.getElementById('vMeetingOtherText').value.trim();
-  }
+  const meetings = vMeetingsSelected.map(m=>({ id:m.id, name:m.name, discussion:(m.discussion||'').trim() }));
+  // Keep the legacy single-field summary too, for anything still reading it (older exports/back-compat)
+  const metContactName = meetings.map(m=>m.name).join('; ');
   const status = document.getElementById('vStatus').value;
   const postponedToDate = document.getElementById('vPostponedToDate').value;
   const cancelFollowupYes = document.querySelector('#vCancelFollowupChips .chip.active')?.dataset.value === 'yes';
@@ -1560,7 +1630,8 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
     activityType: document.getElementById('vActivityType').value,
     status,
     notes: document.getElementById('vNotes').value.trim(),
-    metContactId: metContactId,
+    meetings: meetings,
+    metContactId: null,
     metContactName: metContactName,
     outcome: status==='Done' ? document.getElementById('vOutcome').value.trim() : '',
     rating: status==='Done' ? vSelectedRating : 0,
@@ -1584,7 +1655,7 @@ document.getElementById('btnSaveVisit').addEventListener('click', async ()=>{
         startTime: '', endTime: '', staff: record.staff, classYear: record.classYear, stream: record.stream,
         activityType: record.activityType, status: 'Scheduled',
         notes: `Follow-up after ${status.toLowerCase()} visit on ${record.date}.`,
-        metContactId: null, metContactName: '', outcome:'', rating:0, postponedToDate:'', cancelReason:'', cancelFollowupDate:'',
+        meetings: [], metContactId: null, metContactName: '', outcome:'', rating:0, postponedToDate:'', cancelReason:'', cancelFollowupDate:'',
         reminder: { enabled:false },
         createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid,
       };
@@ -1616,7 +1687,7 @@ function planItemHtml(v){
     <div class="pi-main">
       <div class="pi-college">${escapeHtml(c?c.name:'')}</div>
       <div class="pi-meta">${formatDateDisplay(v.date)} · ${timeRangeDisplay(v)||'time not set'} · ${escapeHtml(v.activityType||'')} · ${escapeHtml(v.status||'')}</div>
-      ${v.metContactName?`<div class="pi-person">🤝 ${escapeHtml(v.metContactName)}</div>`:''}
+      ${meetingsHtmlLines(v)?`<div class="pi-person">${meetingsHtmlLines(v)}</div>`:''}
       ${v.notes?`<div class="pi-notes">${escapeHtml(v.notes)}</div>`:''}
     </div>
     ${v.reminder&&v.reminder.enabled?'<span>🔔</span>':''}
@@ -1783,7 +1854,8 @@ document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
       'Location': c.location||'', 'College': c.name||'', 'Address': c.address||'', 'Pin Code': c.pinCode||'',
       'Tier': c.tier||'', 'Type': c.collegeType||'', 'Concerned Person': c.contactPerson||'',
       'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'',
-      'Meeting With': includePhones ? (v.metContactName||'') : redactPhone(v.metContactName),
+      'Met With': meetingsPlainText(v, includePhones),
+      'Discussion Notes': (v.meetings||[]).map(m=>m.discussion).filter(Boolean).join(' | '),
       'Activity': v.activityType||'', 'Status': v.status||'',
       'Outcome': v.outcome||'', 'Rating (/5)': v.rating||'', 'Rescheduled To': v.postponedToDate ? formatDateDisplay(v.postponedToDate) : '',
       'Cancel Reason': v.cancelReason||'', 'Follow-up Date': v.cancelFollowupDate ? formatDateDisplay(v.cancelFollowupDate) : '', 'Notes': v.notes||'',
@@ -1792,7 +1864,7 @@ document.getElementById('btnRunExcelExport').addEventListener('click', ()=>{
     return row;
   });
   const ws = XLSX.utils.json_to_sheet(rows);
-  const colWidths = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:20},{wch:34},{wch:11},{wch:10},{wch:14},{wch:30},{wch:14},{wch:30}];
+  const colWidths = [{wch:12},{wch:10},{wch:9},{wch:9},{wch:10},{wch:26},{wch:32},{wch:9},{wch:8},{wch:16},{wch:20},{wch:16},{wch:12},{wch:16},{wch:30},{wch:30},{wch:11},{wch:10},{wch:14},{wch:30},{wch:14},{wch:30}];
   if(includePhones) colWidths.push({wch:16});
   ws['!cols'] = colWidths;
   const wb = XLSX.utils.book_new();
