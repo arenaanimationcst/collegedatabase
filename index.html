@@ -1076,7 +1076,15 @@ function getFilteredColleges(){
   return colleges.filter(c=>{
     if(tier==='__blank' && c.tier) return false;
     if(tier && tier!=='__blank' && c.tier!==tier) return false;
-    if(type && c.collegeType!==type) return false;
+    // A college tagged "Junior & Degree College" should show up when filtering to either
+    // "Junior College" or "Degree College" alone — it genuinely has both wings — not just
+    // on an exact match. Filtering to "Junior & Degree College" itself stays an exact match.
+    if(type){
+      const t = c.collegeType;
+      if(type==='Junior College' && t!=='Junior College' && t!=='Junior & Degree College') return false;
+      if(type==='Degree College' && t!=='Degree College' && t!=='Junior & Degree College') return false;
+      if(type==='Junior & Degree College' && t!=='Junior & Degree College') return false;
+    }
     if(pin && c.pinCode!==pin) return false;
     if(loc && c.location!==loc) return false;
     if(q){ const hay=[c.name,c.address,c.pinCode,c.contactPerson,c.contactNumber,c.streams,c.notes].join(' ').toLowerCase(); if(!hay.includes(q)) return false; }
