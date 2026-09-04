@@ -1988,7 +1988,7 @@ function renderNumbersDashboard(){
   const eventCount = scoped.filter(v=> v.activityType==='Event').length;
 
   document.getElementById('numbersSummary').innerHTML = `
-    <div class="sm-card a-red"><div class="num">${totalEvents}</div><div class="label">Completed</div></div>
+    <div class="sm-card a-red"><div class="num">${totalEvents}</div><div class="label">Completed / Meetings</div></div>
     <div class="sm-card a-yellow"><div class="num">${totalLeads}</div><div class="label">Leads Collected</div></div>
     <div class="sm-card a-done"><div class="num">${totalAttendees}</div><div class="label">Attendees</div></div>
     <div class="sm-card a-t1"><div class="num">${totalProspects}</div><div class="label">Prospects</div></div>
