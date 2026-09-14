@@ -335,6 +335,8 @@ input[type=file]{display:none;}
 .num-row{display:flex; justify-content:space-between; align-items:center; background:var(--gray-100); border-radius:8px; padding:8px 11px; margin-bottom:6px; font-size:12.5px;}
 .num-row .nr-label{font-weight:700;}
 .num-row .nr-figures{color:var(--gray-600); text-align:right; font-size:11.5px;}
+.bulk-err-row{background:#fde8e8; border-radius:6px; padding:6px 9px; margin-bottom:4px; font-size:12px; color:var(--red-dark);}
+.bulk-ok-row{background:#e8f5ee; border-radius:6px; padding:6px 9px; margin-bottom:4px; font-size:12px; color:#1f8a4c;}
 .chip.rating{min-width:36px; text-align:center; font-weight:700;}
 .chip.rating.active{background:var(--yellow-dark); border-color:var(--yellow-dark); color:var(--gray-900);}
 .chip.cfu.active{background:var(--gray-800); border-color:var(--gray-800); color:#fff;}
@@ -828,6 +830,7 @@ input[type=file]{display:none;}
         <h3>Data</h3>
         <div style="display:flex; flex-wrap:wrap; gap:8px;">
           <button class="btn-light btn-sm" id="btnExportExcel">📊 Export Weekly Excel Report</button>
+          <button class="btn-light btn-sm" id="btnOpenBulkImport">📥 Bulk Import Visits</button>
         </div>
       </div>
     </div>
@@ -909,6 +912,30 @@ input[type=file]{display:none;}
       </div>
     </div>
     <div class="modal-footer"><div></div><div class="footer-right"><button class="btn-light" id="btnCloseNumbersModal2">Close</button></div></div>
+  </div>
+</div>
+
+<!-- ===================== BULK IMPORT VISITS ===================== -->
+<div class="modal-overlay" id="bulkImportModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2>📥 Bulk Import Visits</h2><button class="close" id="btnCloseBulkImportModal">✕</button></div>
+    <div class="modal-body">
+      <div class="detail-section">
+        <h3>Step 1 — Get the Template</h3>
+        <div class="field-hint">Opens with a "Reference" tab listing the exact college names, activity types, and statuses — copy-paste from there instead of typing to avoid mismatches.</div>
+        <button class="btn-light btn-sm" id="btnDownloadBulkTemplate" style="margin-top:8px;">⬇ Download Sample Template (.xlsx)</button>
+      </div>
+      <div class="detail-section">
+        <h3>Step 2 — Upload Your Filled Sheet</h3>
+        <input type="file" id="bulkImportFile" accept=".xlsx,.xls" style="display:none;">
+        <button class="btn-primary btn-sm" id="btnPickBulkImportFile">📤 Choose File</button>
+        <div id="bulkImportFileName" class="field-hint" style="margin-top:6px;"></div>
+        <div id="bulkImportSummary" style="margin-top:12px;"></div>
+        <div id="bulkImportErrors" style="margin-top:8px; max-height:220px; overflow-y:auto;"></div>
+        <button class="btn-primary btn-sm" id="btnConfirmBulkImport" style="display:none; margin-top:10px;">Import Valid Rows</button>
+      </div>
+    </div>
+    <div class="modal-footer"><div></div><div class="footer-right"><button class="btn-light" id="btnCloseBulkImportModal2">Close</button></div></div>
   </div>
 </div>
 
@@ -2229,6 +2256,179 @@ document.getElementById('btnExportNumbers').addEventListener('click', ()=>{
   const from = document.getElementById('numFrom').value, to = document.getElementById('numTo').value;
   XLSX.writeFile(wb, `arena-numbers-${from}-to-${to}.xlsx`);
   showToast('✓ Numbers exported');
+});
+
+// ============================================================
+// BULK IMPORT VISITS (template download + validated upload)
+// ============================================================
+const bulkImportOverlay = document.getElementById('bulkImportModalOverlay');
+let bulkImportValidRows = [];
+
+document.getElementById('btnOpenBulkImport').addEventListener('click', ()=>{
+  document.getElementById('bulkImportFileName').textContent = '';
+  document.getElementById('bulkImportSummary').innerHTML = '';
+  document.getElementById('bulkImportErrors').innerHTML = '';
+  document.getElementById('btnConfirmBulkImport').style.display = 'none';
+  bulkImportValidRows = [];
+  settingsOverlay.classList.remove('open');
+  bulkImportOverlay.classList.add('open');
+});
+document.getElementById('btnCloseBulkImportModal').addEventListener('click', ()=> bulkImportOverlay.classList.remove('open'));
+document.getElementById('btnCloseBulkImportModal2').addEventListener('click', ()=> bulkImportOverlay.classList.remove('open'));
+bulkImportOverlay.addEventListener('click', e=>{ if(e.target===bulkImportOverlay) bulkImportOverlay.classList.remove('open'); });
+
+document.getElementById('btnDownloadBulkTemplate').addEventListener('click', ()=>{
+  const templateRows = [
+    { 'Date (YYYY-MM-DD)':'2026-09-15', 'Start Time (HH:MM)':'10:00', 'End Time (HH:MM)':'12:00', 'College Name':(colleges[0]?colleges[0].name:'Hume College'), 'Activity Type':'Seminar', 'Status':'Scheduled', 'Class/Year':'FYJC / SYJC', 'Stream':'Commerce / Arts', 'Staff':'Faiz', 'Notes':'Example row — delete before uploading' },
+  ];
+  const ws1 = XLSX.utils.json_to_sheet(templateRows);
+  ws1['!cols'] = [{wch:16},{wch:14},{wch:14},{wch:28},{wch:12},{wch:11},{wch:16},{wch:20},{wch:16},{wch:34}];
+
+  const sortedColleges = [...colleges].sort((a,b)=>a.name.localeCompare(b.name));
+  const maxLen = Math.max(sortedColleges.length, 4, 4);
+  const refRows = [];
+  for(let i=0;i<maxLen;i++){
+    refRows.push({
+      'Valid College Names': sortedColleges[i] ? sortedColleges[i].name : '',
+      'Valid Activity Types': ['Seminar','Workshop','Event','Talk'][i] || '',
+      'Valid Statuses': ['Scheduled','Done','Postponed','Cancelled'][i] || '',
+    });
+  }
+  const ws2 = XLSX.utils.json_to_sheet(refRows);
+  ws2['!cols'] = [{wch:30},{wch:18},{wch:14}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Visits Template');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Reference - Valid Values');
+  XLSX.writeFile(wb, 'arena-visits-import-template.xlsx');
+});
+
+document.getElementById('btnPickBulkImportFile').addEventListener('click', ()=> document.getElementById('bulkImportFile').click());
+document.getElementById('bulkImportFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('bulkImportFileName').textContent = 'Reading ' + file.name + '…';
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const wb = XLSX.read(evt.target.result, { type:'array', cellDates:true });
+      const sheetName = wb.SheetNames.find(n=> n.toLowerCase().includes('template')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      processBulkImportRows(rows, file.name);
+    }catch(err){
+      document.getElementById('bulkImportFileName').textContent = '⚠ Could not read that file — make sure it is a real .xlsx file.';
+      console.error(err);
+    }
+    e.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function parseDateFromCell(val){
+  if(val===undefined || val===null || val==='') return '';
+  if(val instanceof Date) return val.getFullYear()+'-'+String(val.getMonth()+1).padStart(2,'0')+'-'+String(val.getDate()).padStart(2,'0');
+  if(typeof val === 'number'){
+    const d = new Date(Math.round((val - 25569)*86400*1000));
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  const s = String(val).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return '';
+}
+function parseTimeFromCell(val){
+  if(val===undefined || val===null || val==='') return '';
+  if(val instanceof Date) return String(val.getHours()).padStart(2,'0')+':'+String(val.getMinutes()).padStart(2,'0');
+  if(typeof val === 'number'){ // Excel time fraction of a day
+    const totalMin = Math.round(val*24*60);
+    return String(Math.floor(totalMin/60)).padStart(2,'0')+':'+String(totalMin%60).padStart(2,'0');
+  }
+  const s = String(val).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  return m ? m[1].padStart(2,'0')+':'+m[2] : '';
+}
+
+function processBulkImportRows(rows, fileName){
+  const validActivities = ['Seminar','Workshop','Event','Talk'];
+  const validStatuses = ['Scheduled','Done','Postponed','Cancelled'];
+  const results = rows.map((row, idx)=>{
+    const rowNum = idx + 2; // header is row 1
+    const errors = [];
+    const dateVal = parseDateFromCell(row['Date (YYYY-MM-DD)'] ?? row['Date']);
+    if(!dateVal) errors.push('Date is missing or not in a recognizable format');
+    const collegeNameRaw = String(row['College Name']||'').trim();
+    let college = null;
+    if(!collegeNameRaw){ errors.push('College Name is missing'); }
+    else{
+      college = colleges.find(c=> c.name.toLowerCase() === collegeNameRaw.toLowerCase());
+      if(!college) errors.push(`College "${collegeNameRaw}" doesn't match any college you have access to — check spelling against the Reference sheet`);
+    }
+    const activityRaw = String(row['Activity Type']||'').trim();
+    const matchedActivity = validActivities.find(a=> a.toLowerCase()===activityRaw.toLowerCase());
+    if(activityRaw && !matchedActivity) errors.push(`Activity Type "${activityRaw}" not recognized — use Seminar, Workshop, Event, or Talk`);
+    const statusRaw = String(row['Status']||'').trim();
+    const matchedStatus = statusRaw ? validStatuses.find(s=> s.toLowerCase()===statusRaw.toLowerCase()) : 'Scheduled';
+    if(statusRaw && !matchedStatus) errors.push(`Status "${statusRaw}" not recognized — use Scheduled, Done, Postponed, or Cancelled`);
+
+    return {
+      rowNum, errors, collegeName: collegeNameRaw,
+      valid: errors.length===0,
+      data: errors.length===0 ? {
+        collegeId: college.id, location: college.location, date: dateVal,
+        startTime: parseTimeFromCell(row['Start Time (HH:MM)'] ?? row['Start Time']),
+        endTime: parseTimeFromCell(row['End Time (HH:MM)'] ?? row['End Time']),
+        activityType: matchedActivity || 'Seminar', status: matchedStatus || 'Scheduled',
+        classYear: String(row['Class/Year']||'').trim(), stream: String(row['Stream']||'').trim(),
+        staff: String(row['Staff']||'').trim(), notes: String(row['Notes']||'').trim(),
+        meetings: [], metContactId: null, metContactName: '', outcome:'', rating:0,
+        postponedToDate:'', cancelReason:'', cancelFollowupDate:'', reminder:{enabled:false},
+      } : null,
+    };
+  });
+
+  bulkImportValidRows = results.filter(r=>r.valid).map(r=>r.data);
+  const errorRows = results.filter(r=>!r.valid);
+
+  document.getElementById('bulkImportFileName').textContent = `${fileName} — ${rows.length} row(s) found`;
+  document.getElementById('bulkImportSummary').innerHTML = `
+    <div class="stats-mini">
+      <div class="sm-card a-done"><div class="num">${bulkImportValidRows.length}</div><div class="label">Ready to Import</div></div>
+      <div class="sm-card a-red"><div class="num">${errorRows.length}</div><div class="label">Rows With Errors</div></div>
+    </div>`;
+  document.getElementById('bulkImportErrors').innerHTML = errorRows.map(r=>
+    `<div class="bulk-err-row">Row ${r.rowNum} (${escapeHtml(r.collegeName||'no college')}): ${escapeHtml(r.errors.join('; '))}</div>`
+  ).join('');
+  document.getElementById('btnConfirmBulkImport').style.display = bulkImportValidRows.length ? 'inline-flex' : 'none';
+}
+
+document.getElementById('btnConfirmBulkImport').addEventListener('click', async ()=>{
+  if(!bulkImportValidRows.length) return;
+  if(!confirm(`Import ${bulkImportValidRows.length} visit(s) into Firestore? This can't be undone in bulk — you'd need to delete them one by one.`)) return;
+  const btn = document.getElementById('btnConfirmBulkImport');
+  btn.disabled = true; btn.textContent = 'Importing…';
+  try{
+    // Firestore batches cap at 500 writes — chunk defensively even though this scale won't need it.
+    for(let i=0; i<bulkImportValidRows.length; i+=450){
+      const chunk = bulkImportValidRows.slice(i, i+450);
+      const batch = db.batch();
+      chunk.forEach(data=>{
+        const ref = db.collection('visits').doc();
+        batch.set(ref, { ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid });
+      });
+      await batch.commit();
+    }
+    showToast(`✓ Imported ${bulkImportValidRows.length} visit(s)`);
+    bulkImportValidRows = [];
+    document.getElementById('btnConfirmBulkImport').style.display = 'none';
+    document.getElementById('bulkImportSummary').innerHTML = '<div class="field-hint">✓ Import complete — check the Visit Log.</div>';
+    document.getElementById('bulkImportErrors').innerHTML = '';
+  }catch(err){
+    showToast('⚠ Import failed — ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Import Valid Rows';
+  }
 });
 
 document.getElementById('btnExportExcel').addEventListener('click', ()=>{
