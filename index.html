@@ -798,6 +798,20 @@ input[type=file]{display:none;}
         </div>
       </form>
 
+      <div class="detail-section" style="margin-top:14px; border-top:1px solid var(--gray-200); padding-top:12px;">
+        <h3>📥 Already Have This List in Excel?</h3>
+        <div class="field-hint">If you typed up leads and calling notes separately, upload them here instead of retyping one by one — scoped to this exact session automatically.</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+          <button type="button" class="btn-light btn-sm" id="btnDownloadLeadsTemplate">⬇ Download Leads Template (.xlsx)</button>
+          <input type="file" id="bulkLeadsFile" accept=".xlsx,.xls" style="display:none;">
+          <button type="button" class="btn-primary btn-sm" id="btnPickBulkLeadsFile">📤 Upload Filled Sheet</button>
+        </div>
+        <div id="bulkLeadsFileName" class="field-hint" style="margin-top:6px;"></div>
+        <div id="bulkLeadsSummary" style="margin-top:10px;"></div>
+        <div id="bulkLeadsErrors" style="margin-top:8px; max-height:180px; overflow-y:auto;"></div>
+        <button type="button" class="btn-primary btn-sm" id="btnConfirmBulkLeads" style="display:none; margin-top:10px;">Import Valid Leads</button>
+      </div>
+
       <div class="detail-section" style="margin-top:14px;">
         <h3>Forms entered this session (<span id="fbCount">0</span>)</h3>
         <div id="fbEntryList"></div>
@@ -3045,6 +3059,151 @@ async function recomputeVisitNumbersFromForms(visitId){
     await db.collection('visits').doc(visitId).update({ leadsCollected: leads, workshopAttendees: attendees, prospects: prospects, hasFeedbackForms: true });
   }catch(err){ console.error('recompute numbers', err); }
 }
+
+// ============================================================
+// BULK IMPORT LEADS — for a specific session's already-typed Excel list
+// ============================================================
+let bulkLeadsValidRows = [];
+
+document.getElementById('btnDownloadLeadsTemplate').addEventListener('click', ()=>{
+  const templateRows = [
+    { 'Name':'Rahul Sharma', 'Mobile':'9820012345', 'Area':'Byculla', 'Email':'', 'Rating (1-5)':4,
+      'AVGC Interested (Yes/No)':'Yes', 'Program':'Gaming', 'Workshop Interested (Yes/No)':'Yes', 'Counselling Interested (Yes/No)':'No',
+      'Comments':'Example row — delete before uploading', 'Call Date (YYYY-MM-DD)':'', 'Call Status':'Not called', 'Call Notes':'' },
+  ];
+  const ws1 = XLSX.utils.json_to_sheet(templateRows);
+  ws1['!cols'] = [{wch:20},{wch:14},{wch:16},{wch:22},{wch:11},{wch:22},{wch:16},{wch:26},{wch:28},{wch:34},{wch:18},{wch:13},{wch:34}];
+
+  const refRows = [];
+  const yn = ['Yes','No'];
+  const programs = ['Graphics','Motion Graphics','VFX','Gaming','UI / UX'];
+  const callStatuses = ['Not called','Called','Interested','Not interested','Enrolled'];
+  const maxLen = Math.max(yn.length, programs.length, callStatuses.length);
+  for(let i=0;i<maxLen;i++){
+    refRows.push({ 'Yes / No fields': yn[i]||'', 'Valid Programs': programs[i]||'', 'Valid Call Status': callStatuses[i]||'' });
+  }
+  const ws2 = XLSX.utils.json_to_sheet(refRows);
+  ws2['!cols'] = [{wch:16},{wch:18},{wch:16}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Leads Template');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Reference - Valid Values');
+  XLSX.writeFile(wb, 'arena-leads-import-template.xlsx');
+});
+
+document.getElementById('btnPickBulkLeadsFile').addEventListener('click', ()=> document.getElementById('bulkLeadsFile').click());
+document.getElementById('bulkLeadsFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  if(!feedbackEntryVisitId){ showToast('⚠ No session open'); e.target.value=''; return; }
+  document.getElementById('bulkLeadsFileName').textContent = 'Reading ' + file.name + '…';
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const wb = XLSX.read(evt.target.result, { type:'array', cellDates:true });
+      const sheetName = wb.SheetNames.find(n=> n.toLowerCase().includes('template')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      processBulkLeadsRows(rows, file.name);
+    }catch(err){
+      document.getElementById('bulkLeadsFileName').textContent = '⚠ Could not read that file — make sure it is a real .xlsx file.';
+      console.error(err);
+    }
+    e.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function processBulkLeadsRows(rows, fileName){
+  const programOptions = ['Graphics','Motion Graphics','VFX','Gaming','UI / UX'];
+  const callStatusOptions = ['Not called','Called','Interested','Not interested','Enrolled'];
+  const yesNo = (val, fieldLabel, errors) => {
+    const s = String(val||'').trim();
+    if(!s) return 'No';
+    if(s.toLowerCase()==='yes') return 'Yes';
+    if(s.toLowerCase()==='no') return 'No';
+    errors.push(`${fieldLabel} "${s}" should be Yes or No`);
+    return 'No';
+  };
+  const results = rows.map((row, idx)=>{
+    const rowNum = idx + 2;
+    const errors = [];
+    const name = String(row['Name']||'').trim();
+    const mobile = String(row['Mobile']||'').trim();
+    if(!name && !mobile) errors.push('Needs at least a Name or Mobile number');
+    const ratingRaw = row['Rating (1-5)'] ?? row['Rating'];
+    let rating = Number(ratingRaw) || 0;
+    if(rating<0 || rating>5){ errors.push('Rating must be between 1 and 5'); rating = 0; }
+    const avgcInterest = yesNo(row['AVGC Interested (Yes/No)'] ?? row['AVGC Interested'], 'AVGC Interested', errors);
+    const workshopInterest = yesNo(row['Workshop Interested (Yes/No)'] ?? row['Workshop Interested'], 'Workshop Interested', errors);
+    const counselling = yesNo(row['Counselling Interested (Yes/No)'] ?? row['Counselling Interested'], 'Counselling Interested', errors);
+    const programsRaw = String(row['Program']||'').trim();
+    let programs = '';
+    if(programsRaw){
+      const parts = programsRaw.split(',').map(s=>s.trim()).filter(Boolean);
+      const matched = parts.map(p=> programOptions.find(po=>po.toLowerCase()===p.toLowerCase()) || null);
+      if(matched.some(m=>!m)) errors.push(`Program "${programsRaw}" has a value not in the reference list`);
+      else programs = matched.join(', ');
+    }
+    const callStatusRaw = String(row['Call Status']||'').trim();
+    const matchedCallStatus = callStatusRaw ? (callStatusOptions.find(s=>s.toLowerCase()===callStatusRaw.toLowerCase())) : 'Not called';
+    if(callStatusRaw && !matchedCallStatus) errors.push(`Call Status "${callStatusRaw}" not recognized`);
+    const callDate = parseDateFromCell(row['Call Date (YYYY-MM-DD)'] ?? row['Call Date']);
+
+    return {
+      rowNum, errors, name, valid: errors.length===0,
+      data: errors.length===0 ? {
+        visitId: feedbackEntryVisitId, location: (visits.find(vv=>vv.id===feedbackEntryVisitId)||{}).location || currentUser.location,
+        name, mobile, area: String(row['Area']||'').trim(), email: String(row['Email']||'').trim(),
+        rating, avgcInterest, programs, workshopInterest, counselling,
+        comments: String(row['Comments']||'').trim(),
+        callDate: callDate || '', callStatus: matchedCallStatus || 'Not called', callNotes: String(row['Call Notes']||'').trim(),
+        createdAtDate: todayStr(),
+      } : null,
+    };
+  });
+
+  bulkLeadsValidRows = results.filter(r=>r.valid).map(r=>r.data);
+  const errorRows = results.filter(r=>!r.valid);
+
+  document.getElementById('bulkLeadsFileName').textContent = `${fileName} — ${rows.length} row(s) found`;
+  document.getElementById('bulkLeadsSummary').innerHTML = `
+    <div class="stats-mini">
+      <div class="sm-card a-done"><div class="num">${bulkLeadsValidRows.length}</div><div class="label">Ready to Import</div></div>
+      <div class="sm-card a-red"><div class="num">${errorRows.length}</div><div class="label">Rows With Errors</div></div>
+    </div>`;
+  document.getElementById('bulkLeadsErrors').innerHTML = errorRows.map(r=>
+    `<div class="bulk-err-row">Row ${r.rowNum} (${escapeHtml(r.name||'no name')}): ${escapeHtml(r.errors.join('; '))}</div>`
+  ).join('');
+  document.getElementById('btnConfirmBulkLeads').style.display = bulkLeadsValidRows.length ? 'inline-flex' : 'none';
+}
+
+document.getElementById('btnConfirmBulkLeads').addEventListener('click', async ()=>{
+  if(!bulkLeadsValidRows.length) return;
+  if(!confirm(`Import ${bulkLeadsValidRows.length} lead(s) into this session?`)) return;
+  const btn = document.getElementById('btnConfirmBulkLeads');
+  btn.disabled = true; btn.textContent = 'Importing…';
+  try{
+    for(let i=0; i<bulkLeadsValidRows.length; i+=450){
+      const chunk = bulkLeadsValidRows.slice(i, i+450);
+      const batch = db.batch();
+      chunk.forEach(data=>{
+        const ref = db.collection('feedbackForms').doc();
+        batch.set(ref, { ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid });
+      });
+      await batch.commit();
+    }
+    showToast(`✓ Imported ${bulkLeadsValidRows.length} lead(s)`);
+    bulkLeadsValidRows = [];
+    document.getElementById('btnConfirmBulkLeads').style.display = 'none';
+    document.getElementById('bulkLeadsSummary').innerHTML = '<div class="field-hint">✓ Import complete — see the list below.</div>';
+    document.getElementById('bulkLeadsErrors').innerHTML = '';
+  }catch(err){
+    showToast('⚠ Import failed — ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Import Valid Leads';
+  }
+});
 
 // From inside the Visit modal, jump straight into feedback entry for this session (only once saved).
 document.getElementById('btnOpenFeedbackFromVisit').addEventListener('click', ()=>{
