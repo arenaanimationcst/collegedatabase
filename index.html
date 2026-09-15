@@ -469,8 +469,14 @@ input[type=file]{display:none;}
         <div class="toolbar-row" style="margin-top:8px;">
           <button class="btn-light btn-sm" id="btnClearCallFilters">Clear filters</button>
           <button class="btn-light btn-sm" id="btnExportCallList">📊 Export Call List (.xlsx)</button>
+          <input type="file" id="callListReuploadFile" accept=".xlsx,.xls" style="display:none;">
+          <button class="btn-primary btn-sm" id="btnReuploadCallList">📤 Upload Updated Call List</button>
         </div>
       </div>
+      <div id="callListReuploadFileName" class="field-hint" style="margin:6px 0 0;"></div>
+      <div id="callListReuploadSummary" style="margin-top:8px;"></div>
+      <div id="callListReuploadErrors" style="margin-top:6px; max-height:180px; overflow-y:auto;"></div>
+      <button class="btn-primary btn-sm" id="btnConfirmCallListReupload" style="display:none; margin-top:8px;">Apply Updates</button>
       <div id="fbCallListTable"></div>
       <div class="empty-state" id="fbCallListEmpty" style="display:none;">
         <h3>No leads yet</h3><p>Leads appear here once feedback forms with "Interested" answers are entered.</p>
@@ -2824,18 +2830,139 @@ document.getElementById('btnExportCallList').addEventListener('click', ()=>{
     const v = visits.find(vv=>vv.id===f.visitId);
     const c = v ? getCollege(v.collegeId) : null;
     return {
+      'Lead ID': f.id, // don't edit or delete this column — it's what lets a re-upload match back to the right lead
       'Name': f.name||'', 'Mobile': f.mobile||'', 'Area': f.area||'', 'Email': f.email||'',
-      'Rating': f.rating||'', 'AVGC Interested': f.avgcInterest||'', 'Program': f.programs||'',
-      'Workshop Interested': f.workshopInterest||'', 'Counselling Interested': f.counselling||'', 'Comments': f.comments||'',
-      'Call Date': f.callDate ? formatDateDisplay(f.callDate) : '', 'Call Status': f.callStatus||'Not called', 'Call Notes': f.callNotes||'',
-      'College': c?c.name:'', 'Session Date': v?v.date:'', 'Activity Type': v?v.activityType:'',
+      'Rating (1-5)': f.rating||'', 'AVGC Interested (Yes/No)': f.avgcInterest||'', 'Program': f.programs||'',
+      'Workshop Interested (Yes/No)': f.workshopInterest||'', 'Counselling Interested (Yes/No)': f.counselling||'', 'Comments': f.comments||'',
+      'Call Date (YYYY-MM-DD)': f.callDate||'', 'Call Status': f.callStatus||'Not called', 'Call Notes': f.callNotes||'',
+      'College (reference only)': c?c.name:'', 'Session Date (reference only)': v?v.date:'', 'Activity Type (reference only)': v?v.activityType:'',
     };
   });
   if(!rows.length){ showToast('No leads to export yet'); return; }
   const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:22},{wch:20},{wch:14},{wch:16},{wch:22},{wch:11},{wch:22},{wch:16},{wch:26},{wch:28},{wch:34},{wch:18},{wch:13},{wch:34},{wch:24},{wch:16},{wch:14}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Call List');
   XLSX.writeFile(wb, `arena-call-list-${todayStr()}.xlsx`);
+});
+
+// Round-trip: the caller works directly in the file exported above (in Excel, however they
+// like) and this reads it back — matching each row to its lead by the "Lead ID" column, so it
+// updates the right record instead of creating duplicates. Rows with no matching Lead ID are
+// skipped and flagged, never silently turned into new leads.
+document.getElementById('btnReuploadCallList').addEventListener('click', ()=> document.getElementById('callListReuploadFile').click());
+document.getElementById('callListReuploadFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('callListReuploadFileName').textContent = 'Reading ' + file.name + '…';
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const wb = XLSX.read(evt.target.result, { type:'array', cellDates:true });
+      const sheetName = wb.SheetNames.find(n=> n.toLowerCase().includes('call list')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      processCallListReupload(rows, file.name);
+    }catch(err){
+      document.getElementById('callListReuploadFileName').textContent = '⚠ Could not read that file — make sure it is a real .xlsx file.';
+      console.error(err);
+    }
+    e.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+let callListReuploadValid = [];
+function processCallListReupload(rows, fileName){
+  const programOptions = ['Graphics','Motion Graphics','VFX','Gaming','UI / UX'];
+  const callStatusOptions = ['Not called','Called','Interested','Not interested','Enrolled'];
+  const yesNo = (val, fieldLabel, errors) => {
+    const s = String(val||'').trim();
+    if(!s) return 'No';
+    if(s.toLowerCase()==='yes') return 'Yes';
+    if(s.toLowerCase()==='no') return 'No';
+    errors.push(`${fieldLabel} "${s}" should be Yes or No`);
+    return 'No';
+  };
+  const results = rows.map((row, idx)=>{
+    const rowNum = idx + 2;
+    const errors = [];
+    const leadId = String(row['Lead ID']||'').trim();
+    const existing = leadId ? feedbackForms.find(f=>f.id===leadId) : null;
+    if(!leadId) errors.push('Missing Lead ID — this row can\'t be matched to an existing lead. Use the Bulk Import Leads option (inside a session) for brand-new leads instead.');
+    else if(!existing) errors.push(`Lead ID "${leadId}" doesn't match any lead you have access to — was this row edited from a different export, or already deleted?`);
+
+    const rating = Number(row['Rating (1-5)'] ?? row['Rating']) || 0;
+    if(rating<0 || rating>5) errors.push('Rating must be between 1 and 5');
+    const avgcInterest = yesNo(row['AVGC Interested (Yes/No)'] ?? row['AVGC Interested'], 'AVGC Interested', errors);
+    const workshopInterest = yesNo(row['Workshop Interested (Yes/No)'] ?? row['Workshop Interested'], 'Workshop Interested', errors);
+    const counselling = yesNo(row['Counselling Interested (Yes/No)'] ?? row['Counselling Interested'], 'Counselling Interested', errors);
+    const programsRaw = String(row['Program']||'').trim();
+    let programs = '';
+    if(programsRaw){
+      const parts = programsRaw.split(',').map(s=>s.trim()).filter(Boolean);
+      const matched = parts.map(p=> programOptions.find(po=>po.toLowerCase()===p.toLowerCase()) || null);
+      if(matched.some(m=>!m)) errors.push(`Program "${programsRaw}" has a value not in the reference list`);
+      else programs = matched.join(', ');
+    }
+    const callStatusRaw = String(row['Call Status']||'').trim();
+    const matchedCallStatus = callStatusRaw ? (callStatusOptions.find(s=>s.toLowerCase()===callStatusRaw.toLowerCase())) : 'Not called';
+    if(callStatusRaw && !matchedCallStatus) errors.push(`Call Status "${callStatusRaw}" not recognized`);
+    const callDate = parseDateFromCell(row['Call Date (YYYY-MM-DD)'] ?? row['Call Date']);
+
+    return {
+      rowNum, errors, leadId, name: String(row['Name']||'').trim(), valid: errors.length===0,
+      data: errors.length===0 ? {
+        id: leadId,
+        name: String(row['Name']||'').trim(), mobile: String(row['Mobile']||'').trim(),
+        area: String(row['Area']||'').trim(), email: String(row['Email']||'').trim(),
+        rating, avgcInterest, programs, workshopInterest, counselling,
+        comments: String(row['Comments']||'').trim(),
+        callDate: callDate || '', callStatus: matchedCallStatus || 'Not called', callNotes: String(row['Call Notes']||'').trim(),
+      } : null,
+    };
+  });
+
+  callListReuploadValid = results.filter(r=>r.valid).map(r=>r.data);
+  const errorRows = results.filter(r=>!r.valid);
+
+  document.getElementById('callListReuploadFileName').textContent = `${fileName} — ${rows.length} row(s) found`;
+  document.getElementById('callListReuploadSummary').innerHTML = `
+    <div class="stats-mini">
+      <div class="sm-card a-done"><div class="num">${callListReuploadValid.length}</div><div class="label">Ready to Update</div></div>
+      <div class="sm-card a-red"><div class="num">${errorRows.length}</div><div class="label">Rows With Errors</div></div>
+    </div>`;
+  document.getElementById('callListReuploadErrors').innerHTML = errorRows.map(r=>
+    `<div class="bulk-err-row">Row ${r.rowNum} (${escapeHtml(r.name||r.leadId||'unknown')}): ${escapeHtml(r.errors.join('; '))}</div>`
+  ).join('');
+  document.getElementById('btnConfirmCallListReupload').style.display = callListReuploadValid.length ? 'inline-flex' : 'none';
+}
+
+document.getElementById('btnConfirmCallListReupload').addEventListener('click', async ()=>{
+  if(!callListReuploadValid.length) return;
+  if(!confirm(`Update ${callListReuploadValid.length} lead(s) with the values from this file?`)) return;
+  const btn = document.getElementById('btnConfirmCallListReupload');
+  btn.disabled = true; btn.textContent = 'Updating…';
+  try{
+    for(let i=0; i<callListReuploadValid.length; i+=450){
+      const chunk = callListReuploadValid.slice(i, i+450);
+      const batch = db.batch();
+      chunk.forEach(data=>{
+        const { id, ...fields } = data;
+        batch.update(db.collection('feedbackForms').doc(id), { ...fields, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: currentUser.uid });
+      });
+      await batch.commit();
+    }
+    showToast(`✓ Updated ${callListReuploadValid.length} lead(s)`);
+    callListReuploadValid = [];
+    document.getElementById('btnConfirmCallListReupload').style.display = 'none';
+    document.getElementById('callListReuploadSummary').innerHTML = '<div class="field-hint">✓ Update complete — list below reflects the new data.</div>';
+    document.getElementById('callListReuploadErrors').innerHTML = '';
+  }catch(err){
+    showToast('⚠ Update failed — ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Apply Updates';
+  }
 });
 
 // ---- Feedback Entry Modal (fast keyboard flow, doubles as the lead editor) ----
