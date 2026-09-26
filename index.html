@@ -3343,7 +3343,33 @@ document.getElementById('btnOpenFeedbackFromVisit').addEventListener('click', ()
 // PWA: register service worker
 // ============================================================
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+  window.addEventListener('load', ()=>{
+    // updateViaCache: 'none' is the actual fix for "old version keeps coming back" —
+    // by default browsers are allowed to serve sw.js itself from the plain HTTP cache
+    // for up to 24 hours, so even a perfectly network-first fetch handler inside it
+    // can't help until the browser re-checks the file. This forces every registration
+    // check to fetch sw.js fresh from the network, never from HTTP cache.
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg=>{
+      // Actively ask "is there a newer version?" right away, instead of waiting on
+      // the browser's own — often much slower — background schedule.
+      reg.update().catch(()=>{});
+      // Also re-check every time the app comes back to the foreground (phone unlocked,
+      // tab refocused), which is exactly when a stale copy would otherwise show up.
+      document.addEventListener('visibilitychange', ()=>{
+        if(document.visibilityState === 'visible') reg.update().catch(()=>{});
+      });
+    }).catch(()=>{});
+
+    // Once a NEW service worker actually takes control (a real update was found and
+    // activated), reload automatically so this tab picks up the fresh code immediately
+    // instead of silently continuing to run whatever was already loaded in memory.
+    let reloadedOnce = false;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+      if(reloadedOnce) return;
+      reloadedOnce = true;
+      window.location.reload();
+    });
+  });
 }
 
 // Explicit toolbar "add" buttons — visible on desktop too (unlike the mobile-only FAB),
