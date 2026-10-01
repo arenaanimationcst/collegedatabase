@@ -452,6 +452,19 @@ input[type=file]{display:none;}
       </div>
     </div>
     <div id="fbSessionsPanel">
+      <div class="toolbar" style="margin-bottom:10px;">
+        <input type="text" id="fbSessSearch" placeholder="Search college, staff, class (SY / TY)...">
+        <div class="toolbar-row">
+          <select id="fbSessType"><option value="">All Activities</option><option>Seminar</option><option>Workshop</option><option>Event</option></select>
+          <input type="date" id="fbSessFrom" title="From date" style="font-size:12.5px; padding:8px; border-radius:8px; border:1px solid var(--gray-200); background:var(--gray-100);">
+          <input type="date" id="fbSessTo" title="To date" style="font-size:12.5px; padding:8px; border-radius:8px; border:1px solid var(--gray-200); background:var(--gray-100);">
+        </div>
+        <div class="toolbar-row" style="margin-top:8px;">
+          <button class="btn-light btn-sm" id="btnClearSessFilters">Clear filters</button>
+          <button class="btn-primary btn-sm" id="btnExportSessions">📊 Export Sessions (.xlsx)</button>
+        </div>
+      </div>
+      <div class="stats-mini" id="fbSessSummary" style="grid-template-columns:1fr 1fr 1fr;"></div>
       <div class="visit-list" id="fbSessionList"></div>
       <div class="empty-state" id="fbSessionEmpty" style="display:none;">
         <h3>No Seminar / Workshop / Event sessions yet</h3>
@@ -729,6 +742,21 @@ input[type=file]{display:none;}
     <div class="modal-footer">
       <button class="btn-danger btn-sm" id="btnDeleteVisit" style="display:none;">Delete</button>
       <div class="footer-right"><button class="btn-light" id="btnCancelVisitModal">Cancel</button><button class="btn-primary" id="btnSaveVisit">Save Visit</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SESSION DETAIL MODAL (all details + forms for one seminar) ===================== -->
+<div class="modal-overlay" id="sessionModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="sessionModalTitle">Session</h2>
+      <button class="close" id="btnCloseSessionModal">✕</button>
+    </div>
+    <div class="modal-body" id="sessionModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-light" id="btnSessionExport">📊 Export</button>
+      <div class="footer-right"><button class="btn-light" id="btnCloseSessionModal2">Close</button><button class="btn-primary" id="btnSessionEnterFeedback">+ Enter Feedback</button></div>
     </div>
   </div>
 </div>
@@ -2720,28 +2748,259 @@ function feedbackSessions(){
   return visits.filter(v=> v.status==='Done' && ['Seminar','Workshop','Event'].includes(v.activityType))
     .sort((a,b)=> (b.date||'').localeCompare(a.date||''));
 }
+
+// Everything we know about one session's feedback forms, computed in one place so the card,
+// the detail screen and the Excel export always agree.
+function sessionStats(v){
+  const forms = feedbackForms.filter(f=>f.visitId===v.id);
+  const rated = forms.filter(f=>f.rating>0);
+  const avgRating = rated.length ? rated.reduce((sum,f)=>sum+f.rating,0)/rated.length : 0;
+  const avgc = forms.filter(f=>f.avgcInterest==='Yes').length;
+  const workshop = forms.filter(f=>f.workshopInterest==='Yes').length;
+  const counselling = forms.filter(f=>f.counselling==='Yes').length;
+  const hotLeads = forms.filter(f=>f.avgcInterest==='Yes' && (f.counselling==='Yes' || f.workshopInterest==='Yes')).length;
+  const called = forms.filter(f=>f.callStatus && f.callStatus!=='Not called').length;
+  const enrolled = forms.filter(f=>f.callStatus==='Enrolled').length;
+  const programs = {};
+  forms.forEach(f=> (f.programs||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(pr=>{ programs[pr]=(programs[pr]||0)+1; }));
+  const top = Object.entries(programs).sort((a,b)=>b[1]-a[1])[0];
+  return { forms, total:forms.length, avgc, workshop, counselling, hotLeads, called, enrolled, avgRating, programs,
+           topProgram: top ? top[0] : '', avgcPct: forms.length ? Math.round(avgc*100/forms.length) : 0 };
+}
+function classYearBadges(v){
+  return (v.classYear||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>`<span class="badge badge-type">${escapeHtml(x)}</span>`).join(' ');
+}
+function sessionDateLine(v){
+  const parts = [`📅 ${formatDateDisplay(v.date)}`, dayFromDate(v.date)];
+  const t = timeRangeDisplay(v); if(t) parts.push(`🕙 ${t}`);
+  return parts.filter(Boolean).map(escapeHtml).join(' · ');
+}
+
+function getFilteredSessions(){
+  const q = (document.getElementById('fbSessSearch').value||'').trim().toLowerCase();
+  const type = document.getElementById('fbSessType').value;
+  const from = document.getElementById('fbSessFrom').value;
+  const to = document.getElementById('fbSessTo').value;
+  return feedbackSessions().filter(v=>{
+    const c = getCollege(v.collegeId);
+    if(type && v.activityType!==type) return false;
+    if(from && (v.date||'')<from) return false;
+    if(to && (v.date||'')>to) return false;
+    if(q){
+      const hay = `${c?c.name:''} ${v.staff||''} ${v.classYear||''} ${v.stream||''} ${v.activityType||''}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
 function renderFeedbackTab(){
   if(currentView!=='feedback') return;
-  const sessions = feedbackSessions();
+  const all = feedbackSessions();
+  const sessions = getFilteredSessions();
   const list = document.getElementById('fbSessionList');
-  document.getElementById('fbSessionEmpty').style.display = sessions.length ? 'none' : 'block';
-  list.innerHTML = sessions.map(v=>{
-    const c = getCollege(v.collegeId);
-    const forms = feedbackForms.filter(f=>f.visitId===v.id);
-    const leads = forms.filter(f=>f.avgcInterest==='Yes').length;
-    return `<div class="visit-card" data-id="${v.id}" style="cursor:pointer;">
-      <div class="vc-top">
-        <div><strong>${escapeHtml(c?c.name:'(deleted college)')}</strong></div>
-        <span class="badge badge-outline">${escapeHtml(v.activityType||'')}</span>
-      </div>
-      <div class="cdd-meta">${formatDateDisplay(v.date)} ${v.classYear?'· '+escapeHtml(v.classYear):''}</div>
-      <div class="cdd-meta">📝 ${forms.length} form${forms.length===1?'':'s'} entered · ${leads} interested in AVGC</div>
-    </div>`;
-  }).join('');
-  list.querySelectorAll('.visit-card').forEach(el=> el.addEventListener('click', ()=> openFeedbackModal(el.dataset.id)));
+  const emptyEl = document.getElementById('fbSessionEmpty');
+  emptyEl.style.display = all.length ? 'none' : 'block';
+
+  // Summary strip across whatever is currently filtered
+  const stats = sessions.map(sessionStats);
+  const sum = k => stats.reduce((n,st)=>n+st[k],0);
+  const allRated = stats.flatMap(st=>st.forms.filter(f=>f.rating>0));
+  const overallRating = allRated.length ? (allRated.reduce((n,f)=>n+f.rating,0)/allRated.length).toFixed(1) : '—';
+  document.getElementById('fbSessSummary').style.display = all.length ? 'grid' : 'none';
+  document.getElementById('fbSessSummary').innerHTML = `
+    <div class="sm-card a-red"><div class="num">${sessions.length}</div><div class="label">Sessions</div></div>
+    <div class="sm-card a-yellow"><div class="num">${sum('total')}</div><div class="label">Forms</div></div>
+    <div class="sm-card a-t1"><div class="num">${sum('avgc')}</div><div class="label">AVGC Yes</div></div>
+    <div class="sm-card a-done"><div class="num">${sum('workshop')}</div><div class="label">Workshop Yes</div></div>
+    <div class="sm-card a-done"><div class="num">${sum('counselling')}</div><div class="label">Counselling Yes</div></div>
+    <div class="sm-card a-yellow"><div class="num">${overallRating}${overallRating==='—'?'':'★'}</div><div class="label">Avg Rating</div></div>`;
+
+  if(all.length && !sessions.length){
+    list.innerHTML = '<div class="empty-state"><h3>No sessions match these filters</h3><p>Try clearing the search or date range.</p></div>';
+  }else{
+    list.innerHTML = sessions.map(v=>{
+      const c = getCollege(v.collegeId);
+      const st = sessionStats(v);
+      return `<div class="visit-card" data-id="${v.id}" style="cursor:pointer;">
+        <div class="vc-top">
+          <div><strong>${escapeHtml(c?c.name:'(deleted college)')}</strong>
+            <div class="cdd-meta">${sessionDateLine(v)}</div></div>
+          <span class="badge badge-outline">${escapeHtml(v.activityType||'')}</span>
+        </div>
+        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+          ${classYearBadges(v)} ${v.stream?`<span class="badge badge-outline">${escapeHtml(v.stream)}</span>`:''}
+        </div>
+        <div class="cdd-meta" style="margin-top:6px;">📝 ${st.total} form${st.total===1?'':'s'} entered · 🎯 ${st.avgc} interested in AVGC${st.total?` (${st.avgcPct}%)`:''}${st.avgRating?` · ⭐ ${st.avgRating.toFixed(1)}`:''}</div>
+        ${v.staff?`<div class="cdd-meta">👤 ${escapeHtml(v.staff)}</div>`:''}
+        <div class="cdd-meta" style="color:var(--red); font-weight:600; margin-top:4px;">Tap to open session details →</div>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.visit-card').forEach(el=> el.addEventListener('click', ()=> openSessionDetail(el.dataset.id)));
+  }
   populateCallListCollegeFilter();
   renderCallList();
+  if(sessionDetailVisitId) renderSessionDetail();
 }
+['fbSessSearch','fbSessType','fbSessFrom','fbSessTo'].forEach(id=>{
+  document.getElementById(id).addEventListener(id==='fbSessSearch'?'input':'change', renderFeedbackTab);
+});
+document.getElementById('btnClearSessFilters').addEventListener('click', ()=>{
+  ['fbSessSearch','fbSessType','fbSessFrom','fbSessTo'].forEach(id=> document.getElementById(id).value='');
+  renderFeedbackTab();
+});
+
+// ---- Session detail screen: all the session's info + its forms, with a button into feedback entry ----
+const sessionOverlay = document.getElementById('sessionModalOverlay');
+let sessionDetailVisitId = null;
+function openSessionDetail(visitId){
+  sessionDetailVisitId = visitId;
+  renderSessionDetail();
+  sessionOverlay.classList.add('open');
+}
+function closeSessionDetail(){ sessionOverlay.classList.remove('open'); sessionDetailVisitId = null; }
+document.getElementById('btnCloseSessionModal').addEventListener('click', closeSessionDetail);
+document.getElementById('btnCloseSessionModal2').addEventListener('click', closeSessionDetail);
+sessionOverlay.addEventListener('click', e=>{ if(e.target===sessionOverlay) closeSessionDetail(); });
+document.getElementById('btnSessionEnterFeedback').addEventListener('click', ()=>{ if(sessionDetailVisitId) openFeedbackModal(sessionDetailVisitId); });
+document.getElementById('btnSessionExport').addEventListener('click', ()=>{
+  const v = visits.find(vv=>vv.id===sessionDetailVisitId); if(!v) return;
+  const c = getCollege(v.collegeId);
+  exportSessionsWorkbook([v], `arena-session-${(c?c.name:'college').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${v.date}`);
+});
+function renderSessionDetail(){
+  const v = visits.find(vv=>vv.id===sessionDetailVisitId);
+  if(!v){ closeSessionDetail(); return; }
+  const c = getCollege(v.collegeId) || {};
+  const st = sessionStats(v);
+  document.getElementById('sessionModalTitle').textContent = c.name || 'Session';
+  const maxProg = Math.max(1, ...Object.values(st.programs));
+  const progRows = Object.entries(st.programs).sort((a,b)=>b[1]-a[1]).map(([name,n])=>`
+    <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:5px;">
+      <div style="width:110px; font-weight:600;">${escapeHtml(name)}</div>
+      <div style="flex:1; background:var(--gray-100); border-radius:6px; height:10px; overflow:hidden;"><div style="width:${Math.round(n*100/maxProg)}%; height:100%; background:var(--red);"></div></div>
+      <div style="width:24px; text-align:right; font-weight:700;">${n}</div>
+    </div>`).join('') || '<div class="field-hint">No program preferences recorded yet.</div>';
+  const dl = (label, val, full) => `<div${full?' class="full"':''}><div class="dl-label">${label}</div><div class="dl-value">${val || '—'}</div></div>`;
+  const forms = [...st.forms].sort((a,b)=> (b.createdAtDate||'').localeCompare(a.createdAtDate||''));
+  document.getElementById('sessionModalBody').innerHTML = `
+    <div style="margin-bottom:12px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+      <span class="badge badge-done">${escapeHtml(v.activityType||'')}</span> ${classYearBadges(v)}
+      ${c.tier?`<span class="badge ${tierBadgeClass(c.tier)}">${escapeHtml(c.tier)}</span>`:''}
+    </div>
+    <div class="detail-section">
+      <h3>Session Details</h3>
+      <div class="detail-grid">
+        ${dl('Date', escapeHtml(formatDateDisplay(v.date)))}
+        ${dl('Day', escapeHtml(dayFromDate(v.date)))}
+        ${dl('Time', escapeHtml(timeRangeDisplay(v)))}
+        ${dl('Location', escapeHtml(c.location||v.location||''))}
+        ${dl('Class / Year', escapeHtml(v.classYear||''))}
+        ${dl('Stream', escapeHtml(v.stream||''))}
+        ${dl('Staff', escapeHtml(v.staff||''), true)}
+        ${dl('Met With', escapeHtml(meetingsPlainText(v,false)||''), true)}
+        ${dl('Outcome', escapeHtml(v.outcome||''), true)}
+        ${dl('Notes', escapeHtml(v.notes||''), true)}
+      </div>
+    </div>
+    <div class="detail-section">
+      <h3>Feedback Snapshot</h3>
+      <div class="stats-mini" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="sm-card a-yellow"><div class="num">${st.total}</div><div class="label">Forms</div></div>
+        <div class="sm-card a-t1"><div class="num">${st.avgc}</div><div class="label">AVGC Yes${st.total?` · ${st.avgcPct}%`:''}</div></div>
+        <div class="sm-card a-red"><div class="num">${st.hotLeads}</div><div class="label">Hot Leads</div></div>
+        <div class="sm-card a-done"><div class="num">${st.workshop}</div><div class="label">Workshop Yes</div></div>
+        <div class="sm-card a-done"><div class="num">${st.counselling}</div><div class="label">Counselling Yes</div></div>
+        <div class="sm-card a-yellow"><div class="num">${st.avgRating?st.avgRating.toFixed(1)+'★':'—'}</div><div class="label">Avg Rating</div></div>
+      </div>
+      <div class="field-hint">Hot lead = interested in AVGC <em>and</em> wants a workshop or counselling. Follow-up so far: ${st.called} called · ${st.enrolled} enrolled.</div>
+    </div>
+    <div class="detail-section">
+      <h3>AVGC Program Interest</h3>
+      ${progRows}
+    </div>
+    <div class="detail-section">
+      <h3>Feedback Forms (${st.total})</h3>
+      <button type="button" class="btn-primary btn-sm" id="btnSessionAddInline" style="margin-bottom:8px;">+ Enter New Feedback Form</button>
+      <div id="sessionFormList">${forms.map(f=>`
+        <div class="dv-mini" data-sess-fid="${f.id}" style="cursor:pointer;">
+          <div class="dvm-top"><span>${escapeHtml(f.name||'(no name)')}</span><span>${f.rating?'★'.repeat(f.rating):''}</span></div>
+          <div style="color:var(--gray-600); margin-top:2px;">${escapeHtml(f.mobile||'')}${f.area?' · '+escapeHtml(f.area):''}</div>
+          <div style="margin-top:3px;">${f.avgcInterest==='Yes'?'🎯 AVGC'+(f.programs?': '+escapeHtml(f.programs):''):'AVGC: No'}${f.workshopInterest==='Yes'?' · 🛠 Workshop':''}${f.counselling==='Yes'?' · 💬 Counselling':''}${f.callStatus&&f.callStatus!=='Not called'?' · 📞 '+escapeHtml(f.callStatus):''}</div>
+          ${f.comments?`<div style="color:var(--gray-600); margin-top:3px;">“${escapeHtml(f.comments)}”</div>`:''}
+        </div>`).join('') || '<div class="field-hint">No forms entered yet — tap “Enter New Feedback Form”.</div>'}</div>
+    </div>`;
+  document.getElementById('btnSessionAddInline').addEventListener('click', ()=> openFeedbackModal(v.id));
+  document.querySelectorAll('#sessionFormList [data-sess-fid]').forEach(el=> el.addEventListener('click', ()=> openLeadForEdit(el.dataset.sessFid)));
+}
+
+// ---- Sessions Excel export (respects the filters on screen) ----
+function exportSessionsWorkbook(sessionList, fileBase){
+  if(!sessionList.length){ showToast('No sessions to export'); return; }
+  const sorted = [...sessionList].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const sessRows = [], formRows = [], byCollege = {}, progTotals = {};
+  sorted.forEach(v=>{
+    const c = getCollege(v.collegeId) || {};
+    const st = sessionStats(v);
+    sessRows.push({
+      'Date': formatDateDisplay(v.date), 'Day': dayFromDate(v.date), 'Start': formatTime12(v.startTime), 'End': formatTime12(v.endTime),
+      'Location': c.location||v.location||'', 'College': c.name||'(deleted)', 'Tier': c.tier||'', 'Activity': v.activityType||'',
+      'Class/Year': v.classYear||'', 'Stream': v.stream||'', 'Staff': v.staff||'',
+      'Forms Entered': st.total, 'AVGC Interested': st.avgc, 'AVGC %': st.total ? st.avgcPct+'%' : '',
+      'Workshop Interested': st.workshop, 'Counselling Interested': st.counselling, 'Hot Leads': st.hotLeads,
+      'Avg Rating (/5)': st.avgRating ? Number(st.avgRating.toFixed(2)) : '', 'Top Program': st.topProgram,
+      'Called': st.called, 'Enrolled': st.enrolled, 'Outcome': v.outcome||'', 'Notes': v.notes||'',
+    });
+    st.forms.forEach(f=>{
+      formRows.push({
+        'Session Date': formatDateDisplay(v.date), 'Day': dayFromDate(v.date), 'Time': timeRangeDisplay(v), 'College': c.name||'', 'Activity': v.activityType||'', 'Class/Year': v.classYear||'',
+        'Name': f.name||'', 'Mobile': f.mobile||'', 'Area': f.area||'', 'Email': f.email||'', 'Rating (1-5)': f.rating||'',
+        'AVGC Interested': f.avgcInterest||'', 'Program': f.programs||'', 'Workshop Interested': f.workshopInterest||'', 'Counselling Interested': f.counselling||'',
+        'Comments': f.comments||'', 'Call Status': f.callStatus||'Not called', 'Call Date': f.callDate||'', 'Call Notes': f.callNotes||'',
+      });
+    });
+    const key = c.name || '(deleted)';
+    const b = byCollege[key] || (byCollege[key] = { College:key, Sessions:0, Forms:0, AVGC:0, Workshop:0, Counselling:0, ratingSum:0, ratingN:0, last:'' });
+    b.Sessions++; b.Forms+=st.total; b.AVGC+=st.avgc; b.Workshop+=st.workshop; b.Counselling+=st.counselling;
+    st.forms.filter(f=>f.rating>0).forEach(f=>{ b.ratingSum+=f.rating; b.ratingN++; });
+    if((v.date||'')>b.last) b.last = v.date;
+    Object.entries(st.programs).forEach(([k,n])=>{ progTotals[k]=(progTotals[k]||0)+n; });
+  });
+  const tot = k => sessRows.reduce((n,r)=>n+(Number(r[k])||0),0);
+  const totForms = tot('Forms Entered'), totAvgc = tot('AVGC Interested');
+  sessRows.push({ 'Date':'TOTAL', 'Forms Entered':totForms, 'AVGC Interested':totAvgc, 'AVGC %': totForms ? Math.round(totAvgc*100/totForms)+'%' : '',
+    'Workshop Interested':tot('Workshop Interested'), 'Counselling Interested':tot('Counselling Interested'), 'Hot Leads':tot('Hot Leads'), 'Called':tot('Called'), 'Enrolled':tot('Enrolled') });
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(sessRows);
+  ws1['!cols'] = [{wch:13},{wch:11},{wch:10},{wch:10},{wch:11},{wch:28},{wch:8},{wch:10},{wch:12},{wch:14},{wch:16},{wch:9},{wch:10},{wch:8},{wch:10},{wch:11},{wch:9},{wch:10},{wch:16},{wch:8},{wch:9},{wch:30},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Sessions');
+  if(formRows.length){
+    const ws2 = XLSX.utils.json_to_sheet(formRows);
+    ws2['!cols'] = [{wch:13},{wch:11},{wch:19},{wch:26},{wch:10},{wch:12},{wch:20},{wch:14},{wch:16},{wch:24},{wch:9},{wch:10},{wch:22},{wch:10},{wch:11},{wch:34},{wch:13},{wch:12},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Feedback Forms');
+  }
+  if(sorted.length>1){
+    const colRows = Object.values(byCollege).sort((a,b)=>b.Forms-a.Forms).map(b=>({
+      'College':b.College, 'Sessions':b.Sessions, 'Forms':b.Forms, 'AVGC Interested':b.AVGC, 'AVGC %': b.Forms?Math.round(b.AVGC*100/b.Forms)+'%':'',
+      'Workshop Interested':b.Workshop, 'Counselling Interested':b.Counselling, 'Avg Rating': b.ratingN?Number((b.ratingSum/b.ratingN).toFixed(2)):'', 'Last Session': formatDateDisplay(b.last),
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(colRows);
+    ws3['!cols'] = [{wch:28},{wch:9},{wch:8},{wch:14},{wch:8},{wch:18},{wch:20},{wch:11},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'By College');
+  }
+  const progRows = Object.entries(progTotals).sort((a,b)=>b[1]-a[1]).map(([k,n])=>({ 'AVGC Program':k, 'Students Interested':n }));
+  if(progRows.length){
+    const ws4 = XLSX.utils.json_to_sheet(progRows); ws4['!cols'] = [{wch:20},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, ws4, 'Program Interest');
+  }
+  XLSX.writeFile(wb, `${fileBase}.xlsx`);
+  showToast('✓ Excel downloaded');
+}
+document.getElementById('btnExportSessions').addEventListener('click', ()=>{
+  const list = getFilteredSessions();
+  const from = document.getElementById('fbSessFrom').value, to = document.getElementById('fbSessTo').value;
+  exportSessionsWorkbook(list, `arena-seminar-sessions${from||to?`-${from||'start'}-to-${to||'now'}`:'-'+todayStr()}`);
+});
 document.querySelectorAll('#fbSubTabs .fbtab').forEach(chip=> chip.addEventListener('click', ()=>{
   document.querySelectorAll('#fbSubTabs .fbtab').forEach(c=>c.classList.remove('active'));
   chip.classList.add('active');
@@ -3380,4 +3639,3 @@ document.getElementById('btnAddVisitTab').addEventListener('click', ()=> openVis
 </script>
 </body>
 </html>
-        
